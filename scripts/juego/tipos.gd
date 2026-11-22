@@ -3,6 +3,7 @@ class_name Tipos
 
 class Enemigo:
 	var tipo := "grunt"
+	var ataca_t := -99.0         ## último momento en que atacó al jugador (lo usan los drones)
 	var pos := Vector2.ZERO
 	var vel := Vector2.ZERO
 	var vida := 1.0

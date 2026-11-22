@@ -134,6 +134,13 @@ func _draw() -> void:
 		var frac: float = 1.0 - N.dash_cd / max(0.01, N.dash_recarga)
 		draw_arc(dp, 9, -PI / 2, -PI / 2 + TAU * frac, 24, Color(0.45, 0.95, 1.0, 0.9 if frac >= 1.0 else 0.5), 2.0, true)
 		Texto.dibujar(self, dp + Vector2(13, 3), "DASH [ESPACIO]", 6, Color(0.7, 0.95, 1.0, 0.85 if frac >= 1.0 else 0.4))
+		if N.bombas > 0:
+			var bp := dp + Vector2(100, 0)
+			var hay: bool = N.bomba_cargas > 0
+			var fb: float = 1.0 if N.bomba_cargas >= N.bombas else N._t_bomba / Nave.stat_bomba_cd(N.bombas)
+			draw_arc(bp, 9, -PI / 2, -PI / 2 + TAU * fb, 24, Color(1.0, 0.65, 0.3, 0.9 if hay else 0.5), 2.0, true)
+			draw_texture_rect(Datos.tex("res://art/hud/bomb.png"), Rect2(bp - Vector2(6, 6), Vector2(12, 12)), false, Color(1, 1, 1, 1.0 if hay else 0.45))
+			Texto.dibujar(self, bp + Vector2(13, 3), "BOMBA x%d [E]" % N.bomba_cargas, 6, Color(1.0, 0.8, 0.55, 0.9 if hay else 0.45))
 	# ---------------------------------------------------------- flechas a potenciadores
 	var cam: Camera2D = juego.camara
 	var z: float = cam.zoom.x

@@ -61,7 +61,8 @@ var _t_dron := 0.6
 var _t_misil := 1.0
 var _t_orbita := 0.0
 var _t_nova := 5.0
-var _t_bomba := 6.0
+var _t_bomba := 0.0          ## recarga de la siguiente carga de bomba
+var bomba_cargas := 0
 var _t_estela := 0.0
 var _destello_canon := 0.0
 var _retroceso := 0.0
@@ -138,7 +139,7 @@ func texto_mejora(m: String) -> String:
 		"orbit": return "ORBES %d → %d · ALCANCE %d → %d" % [orbitas, orbitas + 1, roundi(stat_orbita_radio(orbitas)) if orbitas else 0, roundi(stat_orbita_radio(orbitas + 1))]
 		"nova": return "RADIO %d → %d · DAÑO %d → %d" % [roundi(stat_nova_radio(nova)) if nova else 0, roundi(stat_nova_radio(nova + 1)), roundi(dano * stat_nova_dano(nova)) if nova else 0, roundi(dano * stat_nova_dano(nova + 1))]
 		"missile": return "MISILES %d → %d · %d DAÑO" % [misiles, misiles + 1, roundi(dano * stat_misil_dano(misiles + 1))]
-		"bomb": return "RADIO %d → %d · DAÑO %d → %d" % [roundi(stat_bomba_radio(bombas)) if bombas else 0, roundi(stat_bomba_radio(bombas + 1)), roundi(dano * stat_bomba_dano(bombas)) if bombas else 0, roundi(dano * stat_bomba_dano(bombas + 1))]
+		"bomb": return "CARGAS %d → %d · RADIO %d → %d · DAÑO %d → %d" % [bombas, bombas + 1, roundi(stat_bomba_radio(bombas)) if bombas else 0, roundi(stat_bomba_radio(bombas + 1)), roundi(dano * stat_bomba_dano(bombas)) if bombas else 0, roundi(dano * stat_bomba_dano(bombas + 1))]
 		"explode": return "RADIO %d → %d" % [roundi(stat_explosivo_radio(explosivo)) if explosivo else 0, roundi(stat_explosivo_radio(explosivo + 1))]
 		"leech": return "PROBABILIDAD %d%% → %d%%" % [roundi(robo_vida * 100), roundi((robo_vida + 0.03) * 100)]
 		"glass": return "DAÑO %d → %d · VIDA MÁX %d → %d" % [d, roundi(dano * 1.7), vida_max, vida_max - 1]
@@ -184,7 +185,7 @@ func aplicar_mejora(m: String) -> void:
 			_t_misil = minf(_t_misil, 0.5)
 		"bomb":
 			bombas += 1
-			_t_bomba = minf(_t_bomba, 2.0)
+			bomba_cargas += 1
 		"explode": explosivo += 1
 		"leech": robo_vida += 0.03
 		"glass":
@@ -297,7 +298,10 @@ func _armas(dt: float) -> void:
 			var disparo := false
 			for i in drones:
 				var p := posicion_dron(i)
-				var e = j.enemigo_cercano_excepto(p, usados, 330.0)
+				# primero: quien te está atacando por un flanco que el cañón no cubre
+				var e = j.atacante_de_flanco(pos, apunte, usados)
+				if e == null:
+					e = j.enemigo_cercano_excepto(p, usados, 330.0)
 				if e == null:
 					e = objetivo
 				if e == null:
@@ -350,15 +354,14 @@ func _armas(dt: float) -> void:
 		if _t_nova <= 0.0:
 			_t_nova = stat_nova_cd(nova)
 			j.pulso_nova(stat_nova_radio(nova), dano * stat_nova_dano(nova), Color("66efff"))
-	# bomba al grupo más denso
-	if bombas > 0:
-		_t_bomba -= dt
-		if _t_bomba <= 0.0:
-			_t_bomba = stat_bomba_cd(bombas)
-			var n := 2 if bombas >= 3 else 1
-			for k in n:
-				var destino: Vector2 = j.punto_mas_denso(pos, k)
-				j.lanzar_bomba(pos, destino, stat_bomba_radio(bombas), dano * stat_bomba_dano(bombas))
+	# bomba: habilidad del jugador; aquí solo se recargan las cargas
+	if bombas > 0 and bomba_cargas < bombas:
+		_t_bomba += dt
+		if _t_bomba >= stat_bomba_cd(bombas):
+			_t_bomba = 0.0
+			bomba_cargas += 1
+			j.ef.anillo(pos, 30, Color("ff9b4d"), 0.3, 2)
+			Audio.sfx("ui_click", -8.0)
 	# escudo
 	if escudo < escudo_max:
 		escudo_t += dt

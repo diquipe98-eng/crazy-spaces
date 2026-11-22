@@ -13,6 +13,10 @@ var _ultimo := Vector2.ZERO
 var _arrastre := Vector2.ZERO
 var _dedos_boton := {}    ## índice -> nombre del botón
 var _pulso := {}          ## animación de pulsación por botón
+var _dedo_bomba := -1      ## dedo que está apuntando la bomba
+var _bomba_inicio := Vector2.ZERO
+var _bomba_punta := Vector2.ZERO
+const ARRASTRE_BOMBA := 70.0   ## píxeles de arrastre para el alcance máximo
 
 const RADIO_JOY := 42.0
 
@@ -48,12 +52,15 @@ func _rects() -> Dictionary:
 	return {
 		"dash": {"c": Vector2(t.x - m - dash_r - 6, t.y - m - dash_r - 4), "r": dash_r},
 		"reparar": {"c": Vector2(t.x - m - dash_r * 2 - 46, t.y - m - 24), "r": 21.0},
+		"bomba": {"c": Vector2(t.x - m - dash_r - 6, t.y - m - dash_r * 2 - 40), "r": 22.0},
 		"pausa": {"c": Vector2(t.x - 18, 50), "r": 13.0},
 	}
 
 func _boton_en(p: Vector2) -> String:
 	var rs := _rects()
 	for k in rs:
+		if k == "bomba" and (juego == null or juego.N == null or juego.N.bombas <= 0):
+			continue
 		if p.distance_to(rs[k].c) <= rs[k].r + 10.0:
 			return k
 	return ""
@@ -66,7 +73,13 @@ func _input(ev: InputEvent) -> void:
 	if ev is InputEventScreenTouch:
 		if ev.pressed:
 			var b := _boton_en(ev.position)
-			if b != "":
+			if b == "bomba":
+				# se apunta arrastrando y se lanza al soltar
+				_dedo_bomba = ev.index
+				_bomba_inicio = ev.position
+				_bomba_punta = ev.position
+				_pulso[b] = 0.15
+			elif b != "":
 				_dedos_boton[ev.index] = b
 				_pulso[b] = 0.15
 				_accion(b)
@@ -77,6 +90,9 @@ func _input(ev: InputEvent) -> void:
 				_ultimo = ev.position
 		else:
 			_soltar(ev.index)
+		get_viewport().set_input_as_handled()
+	elif ev is InputEventScreenDrag and ev.index == _dedo_bomba:
+		_bomba_punta = ev.position
 		get_viewport().set_input_as_handled()
 	elif ev is InputEventScreenDrag and ev.index == _dedo_mov:
 		_punta = ev.position
@@ -89,6 +105,11 @@ func _input(ev: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _soltar(i: int) -> void:
+	if i == _dedo_bomba:
+		_dedo_bomba = -1
+		if juego and juego.estado == "jugando":
+			if not juego.arrojar_bomba(_apunte_bomba()):
+				Audio.sfx("ui_error", -6.0)
 	if i == _dedo_mov:
 		_dedo_mov = -1
 		_arrastre = Vector2.ZERO
@@ -105,6 +126,17 @@ func _accion(b: String) -> void:
 			juego.reparar()
 		"pausa":
 			juego.pausar()
+
+## Arrastre corto = automático; más largo = dirección y fuerza (0..1).
+func _apunte_bomba() -> Vector2:
+	var v := _bomba_punta - _bomba_inicio
+	if v.length() < 14.0:
+		return Vector2.ZERO
+	return v.normalized() * minf(1.0, v.length() / ARRASTRE_BOMBA)
+
+func _a_pantalla(p: Vector2) -> Vector2:
+	var cam: Camera2D = juego.camara
+	return (p - cam.get_screen_center_position()) * cam.zoom.x + get_viewport_rect().size * 0.5
 
 func _process(delta: float) -> void:
 	visible = activo()
@@ -157,6 +189,37 @@ func _draw() -> void:
 	var ic := Datos.tex("res://art/hud/plus.png")
 	draw_texture_rect(ic, Rect2(rp.c - Vector2(8, 13), Vector2(16, 16)), false, Color(1, 1, 1, a))
 	Texto.dibujar(self, rp.c + Vector2(0, 13), str(juego.costo_reparar), 6, Color(1, 0.85, 0.3, a), HORIZONTAL_ALIGNMENT_CENTER)
+	# BOMBA: cargas alrededor y recarga; al arrastrar muestra dónde caerá
+	if N.bombas > 0:
+		var bo: Dictionary = rs.bomba
+		var hay: bool = N.bomba_cargas > 0
+		var ab := (0.95 if hay else 0.45) * op
+		var rb: float = bo.r * (1.0 - _pulso.get("bomba", 0.0) * 0.6)
+		draw_circle(bo.c, rb, Color(0.2, 0.08, 0.02, 0.5 * op))
+		draw_arc(bo.c, rb, 0, TAU, 32, Color(1.0, 0.6, 0.3, ab), 2.0, true)
+		if N.bomba_cargas < N.bombas:
+			var fr: float = N._t_bomba / Nave.stat_bomba_cd(N.bombas)
+			draw_arc(bo.c, rb + 3, -PI / 2, -PI / 2 + TAU * fr, 32, Color(1.0, 0.75, 0.4, 0.7 * op), 2.0, true)
+		draw_texture_rect(Datos.tex("res://art/hud/bomb.png"), Rect2(bo.c - Vector2(9, 12), Vector2(18, 18)), false, Color(1, 1, 1, ab))
+		for k in N.bombas:
+			var pc: Vector2 = bo.c + Vector2((k - (N.bombas - 1) * 0.5) * 7.0, 13)
+			draw_rect(Rect2(pc - Vector2(2, 2), Vector2(4, 4)), Color(1, 0.7, 0.3, ab) if k < N.bomba_cargas else Color(0.4, 0.3, 0.25, 0.6 * op))
+		if _dedo_bomba >= 0 and hay:
+			var ap := _apunte_bomba()
+			var destino: Vector2 = juego.destino_bomba_auto() if ap == Vector2.ZERO else N.pos + ap.normalized() * lerpf(90.0, juego.BOMBA_ALCANCE, ap.length())
+			var pa := _a_pantalla(N.pos)
+			var pb := _a_pantalla(destino)
+			var pasos := 14
+			for k in pasos:
+				if k % 2 == 0:
+					var u0 := float(k) / pasos
+					var u1 := float(k + 1) / pasos
+					var p0 := pa.lerp(pb, u0) - Vector2(0, sin(u0 * PI) * 26.0)
+					var p1 := pa.lerp(pb, u1) - Vector2(0, sin(u1 * PI) * 26.0)
+					draw_line(p0, p1, Color(1, 0.7, 0.35, 0.85), 2.0)
+			var radio: float = Nave.stat_bomba_radio(N.bombas) * juego.camara.zoom.x
+			draw_arc(pb, radio, 0, TAU, 40, Color(1, 0.55, 0.25, 0.8), 1.5, true)
+			draw_circle(pb, radio, Color(1, 0.5, 0.2, 0.12))
 	# pausa
 	var pz: Dictionary = rs.pausa
 	draw_texture_rect(Datos.tex("res://art/hud/pause.png"), Rect2(pz.c - Vector2(9, 9), Vector2(18, 18)), false, Color(1, 1, 1, 0.85 * op))

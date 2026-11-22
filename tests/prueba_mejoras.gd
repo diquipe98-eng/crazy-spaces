@@ -8,6 +8,7 @@ var fallos := 0
 
 func _ready() -> void:
 	Progreso.guardado_activo = false
+	Progreso.saltar_tutorial()
 	var juego = load("res://scenes/juego.tscn").instantiate()
 	add_child(juego)
 	juego.set_process(false)
@@ -29,6 +30,7 @@ func _ready() -> void:
 			if mejor[k + 1] < mejor[k] * 1.12:
 				print("  ✗ %s: el nivel %d casi no mejora (%.0f → %.0f)" % [arma, k + 2, mejor[k], mejor[k + 1]])
 				fallos += 1
+	_prueba_drones(juego)
 	print("RESULTADO: ", "OK" if fallos == 0 else "%d FALLOS" % fallos)
 	get_tree().quit(0 if fallos == 0 else 1)
 
@@ -55,11 +57,13 @@ func _medir(juego, arma: String, nv: int, n: int) -> float:
 		blancos.append([e, e.pos])
 	var total := 0.0
 	var t := 0.0
-	while t < 30.0:
+	while t < (150.0 if arma == "crit" else 30.0):   # el crítico es aleatorio: más muestra
 		juego._t_oleada = 99.0
 		juego._t_pot = 99.0
 		juego.N.inv = 1.0
 		juego.N.pos = Vector2.ZERO
+		if arma == "bomb":
+			juego.arrojar_bomba()   # ahora es una habilidad: se lanza en cuanto hay carga
 		juego.actualizar(1.0 / 30.0)
 		t += 1.0 / 30.0
 		for b in blancos:
@@ -73,3 +77,38 @@ func _medir(juego, arma: String, nv: int, n: int) -> float:
 	if arma == "explode":
 		total = juego.bajas * 400.0
 	return total
+
+## Los drones deben ir a por quien te ataca por un flanco, no al blanco del cañón.
+func _prueba_drones(juego) -> void:
+	juego.nueva_partida()
+	juego.estado = "jugando"
+	juego.prox_jefe = 99999.0
+	juego.N.aplicar_mejora("drone")
+	juego.N.aplicar_mejora("drone")
+	juego._generar_enemigo("grunt", false)
+	var frente = juego.enemigos[-1]
+	juego._generar_enemigo("gunner", false)
+	var flanco = juego.enemigos[-1]
+	var golpes_flanco := 0
+	var golpes_frente := 0
+	var vistas := {}
+	for k in 90:
+		juego._t_oleada = 99.0
+		juego.N.inv = 1.0
+		juego.N.pos = Vector2.ZERO
+		for e in [frente, flanco]:
+			e.vida = 1e9
+			e.rapidez = 0.0
+			e.disparo = 1e9
+		frente.pos = Vector2(0, -120)       # delante: el cañón ya lo cubre
+		flanco.pos = Vector2(-150, 60)      # detrás a la izquierda, disparándote
+		flanco.ataca_t = juego.tiempo
+		juego.actualizar(1.0 / 30.0)
+		for b in juego.balas:
+			if b.tipo == "dron" and not vistas.has(b):
+				vistas[b] = true
+				if b.objetivo == flanco: golpes_flanco += 1
+				elif b.objetivo == frente: golpes_frente += 1
+	print("DRONES: al flanco %d disparos, al frente %d" % [golpes_flanco, golpes_frente])
+	if golpes_flanco == 0 or golpes_flanco < golpes_frente:
+		print("  ✗ los drones no defienden el flanco"); fallos += 1

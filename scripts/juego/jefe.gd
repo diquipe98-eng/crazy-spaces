@@ -53,8 +53,20 @@ static func crear(j, indice: int, vida: float) -> Tipos.Jefe:
 	e.fase = -PI / 2
 	return e
 
+## Cada jefe es el doble de exigente que el anterior (ver Datos.ETAPA_*):
+## más balas por ataque, menos pausa entre ataques y más vida.
+static func etapa(e: Tipos.Jefe) -> int:
+	return e.indice - 1
+
 static func agresividad(e: Tipos.Jefe) -> float:
-	return 1.0 + 0.08 * e.vuelta
+	return minf(2.6, pow(Datos.ETAPA_JEFE_RITMO, etapa(e)))
+
+## "densidad" de cada jefe compensa que unos disparan más balas que otros por naturaleza.
+static func densidad(e: Tipos.Jefe) -> float:
+	return minf(8.0, pow(Datos.ETAPA_JEFE_DENSIDAD, etapa(e)) * float(e.def.get("densidad", 1.0)))
+
+static func _n(e: Tipos.Jefe, n: int) -> int:
+	return roundi(n * densidad(e))
 
 static func boca(e: Tipos.Jefe, offset: Vector2) -> Vector2:
 	return e.pos + (offset * e.escala).rotated(e.inclinacion)
@@ -63,7 +75,7 @@ static func _suave(u: float) -> float:
 	return u * u * (3.0 - 2.0 * u)
 
 static func vel_bala(j, e: Tipos.Jefe) -> float:
-	return j.vel_bala_enemiga() * (1.02 if e.fase_jefe == 2 else 0.88) * float(e.def.bala_mult) * agresividad(e)
+	return j.vel_bala_enemiga() * (1.02 if e.fase_jefe == 2 else 0.88) * float(e.def.bala_mult) * minf(1.45, pow(1.07, etapa(e)))
 
 static func actualizar(j, e: Tipos.Jefe, dt: float) -> void:
 	e.t += dt
@@ -203,7 +215,7 @@ static func _iniciar_aviso(j, e: Tipos.Jefe) -> void:
 	e.patron = lista[e.patron_i]
 	if e.patron == "invocar" and j.esbirros_vivos() >= 8:
 		e.patron = "anillo"
-	e.carga_total = TIEMPO_AVISO.get(e.patron, 0.85) * (0.85 if e.fase_jefe == 2 else 1.0) / agresividad(e)
+	e.carga_total = TIEMPO_AVISO.get(e.patron, 0.85) * (0.85 if e.fase_jefe == 2 else 1.0) / minf(1.6, agresividad(e))
 	e.carga_t = e.carga_total
 	e.estado = "carga"
 	var nombre: String = NOMBRE_PATRON.get(e.patron, "")
@@ -244,7 +256,7 @@ static func _disparar(j, e: Tipos.Jefe) -> void:
 		"barrera": e.rafagas = 2 if f2 else 1
 		"lluvia": e.rafagas = 9 if f2 else 7
 		"invocar":
-			j.invocar_esbirros(e, 5 if f2 else 3)
+			j.invocar_esbirros(e, _n(e, 5 if f2 else 3))
 			j.ef.anillo(e.pos, 90, e.color, 0.5, 4)
 			Audio.sfx("elite")
 			return
@@ -304,7 +316,7 @@ static func _actualizar_salto(j, e: Tipos.Jefe, dt: float) -> void:
 		e.estado = "patrulla"
 		e.cuenta = _pausa(e) * 0.6
 		# reaparece con un estallido de balas
-		var n := 18 if e.fase_jefe == 2 else 12
+		var n := _n(e, 18 if e.fase_jefe == 2 else 12)
 		for k in n:
 			j.bala_enemiga(e.pos, k * TAU / n + e.t, vel_bala(j, e) * 0.55, e.color, 4.6)
 		j.ef.anillo(e.pos, 120, e.color, 0.5, 5)
@@ -320,7 +332,7 @@ static func _tanda(j, e: Tipos.Jefe) -> void:
 	e.rafagas -= 1
 	match e.patron:
 		"anillo":
-			var n := 18 if f2 else 14
+			var n := _n(e, 18 if f2 else 14)
 			var hueco := 0.3 if f2 else 0.42
 			e.giro += 0.22
 			for k in n:
@@ -330,7 +342,7 @@ static func _tanda(j, e: Tipos.Jefe) -> void:
 				j.bala_enemiga(nuc, a, sp * 0.62, Color("ff627b"), 4.6)
 			e.rafaga_t = 0.3
 		"rafaga":
-			var n := 7 if f2 else 5
+			var n := _n(e, 7 if f2 else 5)
 			for c in e.def.canones:
 				var p := boca(e, c)
 				var a := (e.objetivo - p).angle()
@@ -343,12 +355,13 @@ static func _tanda(j, e: Tipos.Jefe) -> void:
 				var p := boca(e, e.def.alas[i])
 				var lado := -1.0 if i == 0 else 1.0
 				var a = (j.N.pos - p).angle() + lado * (0.24 if f2 else 0.31)
-				for k in 3:
-					j.bala_enemiga(p, a + (k - 1) * 0.075, sp * 0.9, Color("ff9a72") if i == 0 else Color("9ff0ff"), 4.2)
+				var m := _n(e, 3)
+				for k in m:
+					j.bala_enemiga(p, a + (k - (m - 1) / 2.0) * 0.075, sp * 0.9, Color("ff9a72") if i == 0 else Color("9ff0ff"), 4.2)
 				j.ef.destello(p, 12, Color(1, 0.7, 0.5), 0.08)
 			e.rafaga_t = 0.2
 		"nova":
-			var n := 26 if f2 else 22
+			var n := _n(e, 26 if f2 else 22)
 			var hueco := 0.38 if f2 else 0.5
 			e.giro += 0.13
 			for k in n:
@@ -360,7 +373,7 @@ static func _tanda(j, e: Tipos.Jefe) -> void:
 			e.rafaga_t = 0.45
 		"espiral":
 			e.giro += 0.33 if f2 else 0.28
-			var brazos := 3 if f2 else 2
+			var brazos := mini(6, roundi((3 if f2 else 2) * densidad(e)))
 			for brazo in brazos:
 				var a: float = e.giro + brazo * TAU / brazos
 				j.bala_enemiga(nuc, a, sp * 0.6, e.color.lerp(Color("ff6fb0"), 0.5), 4.0)
@@ -370,13 +383,14 @@ static func _tanda(j, e: Tipos.Jefe) -> void:
 			for i in 2:
 				var p := boca(e, e.def.alas[i])
 				var base := PI / 2 + (0.9 - paso * 1.8) * (1.0 if i == 0 else -1.0)
-				for k in 5:
-					j.bala_enemiga(p, base + (k - 2) * 0.16, sp * 0.8, Color("ffb35c"), 4.0)
+				var m := _n(e, 5)
+				for k in m:
+					j.bala_enemiga(p, base + (k - (m - 1) / 2.0) * 0.16 * 5.0 / m, sp * 0.8, Color("ffb35c"), 4.0)
 			e.rafaga_t = 0.22
 		"misiles":
 			for c in e.def.canones:
 				var p := boca(e, c)
-				for k in 2:
+				for k in _n(e, 2):
 					var b = j.bala_enemiga(p, -PI / 2 + randf_range(-0.9, 0.9), 135.0, Color("ff8a3d"), 5.0)
 					b.guiada = 1.7 if f2 else 1.4
 					b.vida = 4.6
@@ -393,12 +407,12 @@ static func _tanda(j, e: Tipos.Jefe) -> void:
 			while x <= x1:
 				if absf(x - hueco_x) > ancho_hueco * 0.5:
 					j.bala_enemiga(Vector2(x, e.pos.y + 20.0), PI / 2, sp * 0.48, e.color.lerp(Color.WHITE, 0.2), 4.2)
-				x += 24.0
+				x += maxf(15.0, 24.0 / densidad(e))
 			e.rafaga_t = 0.9
 		"lluvia":
 			for c in e.def.alas:
 				var p := boca(e, c)
-				for k in (2 if f2 else 1):
+				for k in _n(e, 2 if f2 else 1):
 					var b = j.bala_enemiga(p, PI / 2 + randf_range(-0.55, 0.55), sp * randf_range(0.5, 0.75), Color("9dff6a"), 4.4)
 					b.vida = 6.0
 			j.bala_enemiga(nuc, (j.N.pos - nuc).angle(), sp * 0.8, Color("9dff6a"), 5.0)
@@ -413,7 +427,7 @@ static func _impacto_embestida(j, e: Tipos.Jefe) -> void:
 	j.ef.comic(e.pos + Vector2(0, -30), "¡CRASH!", Color("ff7892"), 16, 0.7)
 	j.sacudir(14.0)
 	Audio.sfx("bomba", -4.0)
-	var n := 12 if f2 else 8
+	var n := _n(e, 12 if f2 else 8)
 	for k in n:
 		j.bala_enemiga(e.pos, k * TAU / n + e.t, vel_bala(j, e) * 0.55, Color("ff7892"), 4.4)
 	e.estado = "regreso"

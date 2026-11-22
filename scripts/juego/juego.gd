@@ -60,6 +60,11 @@ var escudo_onda := 0.0          ## onda en la burbuja de escudo al bloquear un g
 var escudo_onda_dir := Vector2.UP
 var _cadena: Array = []          ## explosiones encadenadas pendientes (Núcleo inestable)
 var hitstop := 0.0
+## contadores para medir la dificultad en las pruebas
+var balas_disparadas := 0
+var enemigos_generados := 0
+var vida_generada := 0.0
+var _anuncio_etapa_t := 0.0   ## cuenta atrás para anunciar la etapa nueva tras el jefe
 var anuncio_actual := {}        ## {a, b, t, max}
 var _tex_asteroides: Array = []
 var _muerte_t := 0.0
@@ -72,11 +77,27 @@ func _ready() -> void:
 	camara.zoom = Vector2(Datos.ZOOM_CAMARA, Datos.ZOOM_CAMARA)
 	for i in 8:
 		_tex_asteroides.append(Generador.asteroide(randi_range(8, 15), randi(), i % 4 == 3, i % 3 == 0))
+	_registrar_accion_bomba()
 	if "--tactil" in OS.get_cmdline_user_args():
 		Ajustes.forzar_tactil(true)
 	nueva_partida()
 
+static func _registrar_accion_bomba() -> void:
+	if InputMap.has_action("bomba"):
+		return
+	InputMap.add_action("bomba")
+	var tecla := InputEventKey.new()
+	tecla.physical_keycode = KEY_E
+	InputMap.action_add_event("bomba", tecla)
+	var raton := InputEventMouseButton.new()
+	raton.button_index = MOUSE_BUTTON_RIGHT
+	InputMap.action_add_event("bomba", raton)
+	var mando := InputEventJoypadButton.new()
+	mando.button_index = JOY_BUTTON_Y
+	InputMap.action_add_event("bomba", mando)
+
 func nueva_partida() -> void:
+	_terminar_tutorial()
 	N = Nave.new(self, Progreso.nave_equipada)
 	N.pos = Vector2.ZERO
 	enemigos.clear(); balas.clear(); balas_enemigas.clear(); recogibles.clear(); potenciadores.clear()
@@ -89,7 +110,7 @@ func nueva_partida() -> void:
 	iman_t = 0.0; jefe = null; jefes_derrotados = 0; arena = {}; singularidad = 0.0
 	prox_jefe = Datos.PRIMER_JEFE_SEG; espera_jefe_hasta = prox_jefe + Datos.JEFE_ESPERA_MAX_SEG
 	_t_oleada = 0.45; _t_pot = Datos.POT_PRIMERO_SEG; _bonus_minuto = 60.0; _oleada_critica = false
-	_muerte_t = 0.0; _explosiones_jefe.clear(); recompensa_jefe = false
+	_muerte_t = 0.0; _explosiones_jefe.clear(); recompensa_jefe = false; _anuncio_etapa_t = 0.0
 	# las naves avanzadas empiezan con armas: cuentan como nivel de esa mejora
 	for m in Datos.nave(N.id).get("inicio", []):
 		mejoras_tomadas[m] = int(mejoras_tomadas.get(m, 0)) + 1
@@ -100,10 +121,56 @@ func nueva_partida() -> void:
 	camara.position = N.pos
 	camara.reset_smoothing()
 	cambiar_estado("jugando")
+	# el tutorial solo acompaña la primera partida del jugador
+	_partida_tutorial = not Progreso.tutorial_visto("controles")
+	_tutorial.call_deferred("controles")
+
+# ---------------------------------------------------------------- tutorial
+## Muestra una ventana del tutorial si el jugador no la ha visto. Mientras está
+## abierta la partida se congela; al cerrarla vuelve al estado anterior.
+var _estado_antes_tutorial := ""
+var _partida_tutorial := false   ## true solo en la primera partida del jugador
+
+func _tutorial(id: String) -> void:
+	if not _partida_tutorial:
+		return
+	if estado == "tutorial" or pantallas.tutorial.abierto():
+		return
+	if estado != "jugando" and estado != "mejora":
+		return
+	var previo := estado
+	if not pantallas.tutorial.abrir([id]):
+		return
+	_estado_antes_tutorial = previo
+	if previo == "jugando":
+		cambiar_estado("tutorial")
+
+func _tutorial_cerrado() -> void:
+	if Progreso.tutorial.size() >= Tutorial.ORDEN.size():
+		_partida_tutorial = false   # saltado o completo
+	if estado == "tutorial":
+		cambiar_estado(_estado_antes_tutorial)
+	elif estado == "mejora":
+		pantallas.enfocar_mejora()
+
+## Al terminar la primera partida el tutorial se da por hecho: no vuelve a salir solo.
+func _terminar_tutorial() -> void:
+	if _partida_tutorial:
+		_partida_tutorial = false
+		Progreso.saltar_tutorial()
+		Progreso.guardar()
+
+func _revisar_tutorial() -> void:
+	if not _partida_tutorial:
+		return
+	if tiempo > 12.0 and not Progreso.tutorial_visto("mecanicas"):
+		_tutorial("mecanicas")
+	elif jefe != null and jefe.asentado and not Progreso.tutorial_visto("jefe"):
+		_tutorial("jefe")
 
 func cambiar_estado(nuevo: String) -> void:
 	estado = nuevo
-	Audio.pausa_musical(nuevo == "pausa" or nuevo == "mejora")
+	Audio.pausa_musical(nuevo == "pausa" or nuevo == "mejora" or nuevo == "tutorial")
 	estado_cambiado.emit(nuevo)
 	pantallas.mostrar(nuevo)
 
@@ -119,6 +186,8 @@ func _process(delta: float) -> void:
 			hitstop -= delta
 			dt = delta * 0.08
 		actualizar(dt)
+		if estado == "jugando":
+			_revisar_tutorial()
 	# cada explosión pide sacudida según su tamaño
 	if ef.sacudida_pedida > 0.0:
 		sacudir(minf(ef.sacudida_pedida, 30.0))
@@ -166,6 +235,11 @@ func actualizar(dt: float) -> void:
 	_actualizar_recogibles(dt)
 	_actualizar_potenciadores(dt)
 	_actualizar_explosiones_jefe(dt)
+	if _anuncio_etapa_t > 0.0:
+		_anuncio_etapa_t -= dt
+		if _anuncio_etapa_t <= 0.0:
+			_anunciar_etapa()
+
 	_actualizar_cadena(dt)
 	ef.actualizar(dt)
 	if arena and arena.sello < 1.0:
@@ -216,20 +290,40 @@ func anuncio(a: String, b: String, t := 2.5) -> void:
 func media_vista() -> Vector2:
 	return get_viewport_rect().size / (2.0 * camara.zoom.x)
 
+## Al empezar una etapa: anuncia la raza nueva (si la hay) y la dureza.
+func _anunciar_etapa() -> void:
+	var nueva := ""
+	for t in Datos.ENEMIGOS:
+		if int(Datos.ENEMIGOS[t].etapa) == etapa():
+			nueva = t
+	var titulo := "ETAPA %d" % (etapa() + 1)
+	if nueva != "":
+		anuncio("¡NUEVA AMENAZA: %s!" % String(Datos.ENEMIGOS[nueva].nombre).to_upper(), "%s · ETAPA %d" % [Datos.DESC_RAZA.get(nueva, ""), etapa() + 1], 3.4)
+	else:
+		anuncio(titulo, "LAS OLEADAS SE DUPLICAN", 3.0)
+	ef.comic(N.pos + Vector2(0, -90), "x%d" % roundi(pow(2.0, etapa())), Color("ff7892"), 18, 0.9)
+	Audio.sfx("alarma_jefe")
+
 # =====================================================================
 # Dificultad y oleadas
 # =====================================================================
+## Etapa actual = jefes derrotados. Cada etapa multiplica la presión de las oleadas.
+func etapa() -> int:
+	return jefes_derrotados
+
 func _mult_vida() -> float:
-	return 1.0 + min(5.0, pow(max(0.0, amenaza - 1.0), 1.08) * 0.07 + min(0.24, tiempo / 180.0 * 0.24))
+	var base: float = 1.0 + min(5.0, pow(max(0.0, amenaza - 1.0), 1.08) * 0.07 + min(0.24, tiempo / 180.0 * 0.24))
+	return base * pow(Datos.ETAPA_VIDA, etapa())
 
 func _mult_vel() -> float:
 	return 0.97 * (1.0 + min(0.55, (amenaza - 1.0) * 0.07) + min(0.24, tiempo / 180.0 * 0.24))
 
 func _intervalo_oleada() -> float:
-	return max(0.5, 1.3 - min(0.8, (amenaza - 1.0) * 0.12 + min(0.25, tiempo / 180.0 * 0.25)))
+	var base: float = max(0.5, 1.3 - min(0.8, (amenaza - 1.0) * 0.12 + min(0.25, tiempo / 180.0 * 0.25)))
+	return maxf(0.12, base / pow(Datos.ETAPA_APARICION, etapa()))
 
 func _prob_elite() -> float:
-	return min(0.3, 0.02 + tiempo / 180.0 * 0.12 + max(0.0, amenaza - 1.0) * 0.008)
+	return min(0.4, 0.02 + tiempo / 180.0 * 0.12 + max(0.0, amenaza - 1.0) * 0.008 + etapa() * 0.04)
 
 func vel_bala_enemiga() -> float:
 	return min(250.0, 132.0 + amenaza * 3.65)
@@ -237,13 +331,17 @@ func vel_bala_enemiga() -> float:
 func _elegir_tipo() -> String:
 	var total := 0.0
 	var tipos := []
+	var pesos := {}
 	for t in Datos.ENEMIGOS:
-		if amenaza >= Datos.ENEMIGOS[t].amenaza:
+		var et: int = Datos.ENEMIGOS[t].etapa
+		if et <= etapa():
 			tipos.append(t)
-			total += Datos.ENEMIGOS[t].peso
+			# la raza recién llegada sale más en su etapa de estreno
+			pesos[t] = float(Datos.ENEMIGOS[t].peso) * (2.2 if et == etapa() and et > 0 else 1.0)
+			total += pesos[t]
 	var v := randf() * total
 	for t in tipos:
-		v -= Datos.ENEMIGOS[t].peso
+		v -= pesos[t]
 		if v <= 0.0:
 			return t
 	return "grunt"
@@ -279,11 +377,15 @@ func _generar_enemigo(tipo: String, elite: bool) -> void:
 	var mult := 2.25 if elite else 1.0
 	e.vida = d.vida * _mult_vida() * mult
 	e.vida_max = e.vida
+	enemigos_generados += 1
+	vida_generada += e.vida
 	e.rapidez = d.vel * _mult_vel() * (1.09 if elite else 1.0)
 	e.xp = d.xp * (3 if elite else 1)
 	e.pts = d.pts * (3 if elite else 1)
 	e.nivel = ["grunt", "weaver", "gunner", "diver", "tank"].find(tipo) + 1 + (3 if elite else 0)
-	e.textura = "res://art/enemigos/%s_%d.png" % [tipo, randi() % 5]
+	# cada etapa estrena un modelo nuevo de cada raza (mezclado con los anteriores)
+	var modelo := mini(etapa(), 4) if randf() < 0.7 else randi() % (mini(etapa(), 4) + 1)
+	e.textura = "res://art/enemigos/%s_%d.png" % [tipo, modelo]
 	e.escala = d.escala
 	e.color = d.color
 	e.radio = max(11.0, 84.0 * d.escala * 0.35)
@@ -363,6 +465,7 @@ func _ia_general(e: Tipos.Enemigo, dt: float) -> void:
 				e.disparo = randf_range(1.6, 2.2)
 				var a := n.angle()
 				var k := 3 if amenaza >= 6.0 else 1
+				e.ataca_t = tiempo
 				for i in k:
 					bala_enemiga(e.pos, a + (i - (k - 1) / 2.0) * 0.18, vel_bala_enemiga(), Color("ff9a3c"), 4.0)
 				ef.destello(e.pos + n * 10, 8, Color(1, 0.7, 0.35), 0.08)
@@ -376,6 +479,7 @@ func _ia_general(e: Tipos.Enemigo, dt: float) -> void:
 					e.vel = (e.objetivo - e.pos).normalized() * e.rapidez * 3.5
 			elif e.dash_cd <= 0.0 and d < 260.0:
 				e.aviso = 0.32
+				e.ataca_t = tiempo
 				e.objetivo = N.pos
 				e.destello = 0.3
 		"tank":
@@ -383,6 +487,7 @@ func _ia_general(e: Tipos.Enemigo, dt: float) -> void:
 				e.disparo = 2.8
 				var o := randf() * TAU
 				var k := 12 if amenaza >= 6.0 else 9
+				e.ataca_t = tiempo
 				for i in k:
 					bala_enemiga(e.pos, o + i * TAU / k, vel_bala_enemiga() * 0.68, Color("9b8aff"), 5.0)
 				ef.anillo(e.pos, 30, Color("9b8aff"), 0.32, 3)
@@ -408,6 +513,7 @@ func _ia_tejedora(e: Tipos.Enemigo, dt: float) -> void:
 	e.pos += v.limit_length(e.rapidez) * dt
 	if e.dash_cd <= 0.0 and d < 235.0 and d > 94.0:
 		e.objetivo = N.pos
+		e.ataca_t = tiempo
 		e.aviso = 0.44
 		e.dash_cd = randf_range(3.8, 4.8)
 		e.destello = 0.44
@@ -419,6 +525,7 @@ func _contacto_jugador(e: Tipos.Enemigo) -> void:
 	var dv := N.pos - e.pos
 	var d := dv.length()
 	if d < rr:
+		e.ataca_t = tiempo
 		golpear_jugador()
 		e.contacto = 1.05 if e.es_jefe else 1.4
 		var n = dv / max(d, 0.001)
@@ -454,6 +561,27 @@ func enemigo_cercano_excepto(p: Vector2, excluir: Array, alcance: float) -> Tipo
 		var d = e.pos.distance_squared_to(p)
 		if d < bd:
 			bd = d
+			mejor = e
+	return mejor
+
+## Para los drones: enemigos que te atacaron hace poco y vienen de un lado
+## distinto al que apunta el cañón principal (flancos y retaguardia).
+func atacante_de_flanco(p: Vector2, apunte: float, excluir: Array) -> Tipos.Enemigo:
+	var mejor: Tipos.Enemigo = null
+	var mejor_v := -1e9
+	for e in enemigos:
+		if not golpeable(e) or excluir.has(e) or e.es_jefe or tiempo - e.ataca_t > 3.5:
+			continue
+		var dv: Vector2 = e.pos - p
+		var d := dv.length()
+		if d > 360.0:
+			continue
+		var desvio := absf(angle_difference(dv.angle(), apunte))
+		if desvio < 0.75:
+			continue   # ese ya lo cubre el cañón
+		var v := desvio * 120.0 - d + (80.0 if tiempo - e.ataca_t < 1.0 else 0.0)
+		if v > mejor_v:
+			mejor_v = v
 			mejor = e
 	return mejor
 
@@ -681,6 +809,32 @@ func pulso_nova(radio: float, dano: float, color: Color) -> void:
 	Audio.sfx("nova")
 
 ## Bomba: vuela en arco hasta el grupo más denso y explota al llegar.
+## Habilidad BOMBA. "apuntado": dirección (y fuerza 0..1 en su longitud) del
+## arrastre táctil; "destino" fijo (clic derecho). Sin nada: hacia donde te mueves
+## o, si estás quieto, al grupo de enemigos más denso.
+const BOMBA_ALCANCE := 250.0
+
+func arrojar_bomba(apuntado := Vector2.ZERO, destino := Vector2.INF) -> bool:
+	if N.muerta or N.bombas <= 0 or N.bomba_cargas <= 0:
+		return false
+	var fin: Vector2
+	if destino != Vector2.INF:
+		fin = N.pos + (destino - N.pos).limit_length(BOMBA_ALCANCE)
+	elif apuntado != Vector2.ZERO:
+		fin = N.pos + apuntado.normalized() * lerpf(90.0, BOMBA_ALCANCE, clampf(apuntado.length(), 0.0, 1.0))
+	else:
+		fin = destino_bomba_auto()
+	N.bomba_cargas -= 1
+	lanzar_bomba(N.pos, fin, Nave.stat_bomba_radio(N.bombas), N.dano * Nave.stat_bomba_dano(N.bombas))
+	ef.comic(N.pos + Vector2(0, -26), "¡BOMBA!", Color("ff9b4d"), 9, 0.5)
+	return true
+
+func destino_bomba_auto() -> Vector2:
+	if N.pos.distance_to(N.pos_prev) > 0.6:
+		return N.pos + N.ultima_dir.normalized() * 170.0
+	var p := punto_mas_denso(N.pos)
+	return N.pos + (p - N.pos).limit_length(BOMBA_ALCANCE)
+
 func lanzar_bomba(desde: Vector2, destino: Vector2, radio: float, dano: float) -> void:
 	var b := Tipos.Bala.new()
 	b.tipo = "bomba"
@@ -729,6 +883,7 @@ func agregar_bala(p: Vector2, a: float, rapidez: float, dano: float, color: Colo
 	return b
 
 func bala_enemiga(p: Vector2, a: float, rapidez: float, color: Color, radio := 4.0) -> Tipos.BalaEnemiga:
+	balas_disparadas += 1
 	var b := Tipos.BalaEnemiga.new()
 	b.pos = p
 	b.vel = Vector2.from_angle(a) * rapidez
@@ -993,8 +1148,9 @@ func _programar_jefe() -> void:
 func vida_jefe(bi: int) -> float:
 	var def := IAJefe.definicion(bi)
 	var dps := maxf(45.0, N.dps_estimado())
-	var segundos := Datos.JEFE_SEGUNDOS_OBJETIVO + minf(16.0, (bi - 1) * 4.0)
-	return clampf(dps * segundos * float(def.vida_mult), Datos.JEFE_VIDA_MIN, Datos.JEFE_VIDA_MAX) * pow(1.12, bi - 1)
+	# cada jefe dura x1.35 más que el anterior frente al mismo daño (tope x3)
+	var segundos := Datos.JEFE_SEGUNDOS_OBJETIVO * minf(3.0, pow(Datos.ETAPA_JEFE_DURACION, bi - 1))
+	return clampf(dps * segundos * float(def.vida_mult), Datos.JEFE_VIDA_MIN, Datos.JEFE_VIDA_MAX)
 
 func _iniciar_jefe() -> void:
 	var bi := jefes_derrotados + 1
@@ -1071,6 +1227,7 @@ func _jefe_derrotado(e: Tipos.Jefe) -> void:
 	Audio.sfx("explosion_grande")
 	Ajustes.vibrar(120)
 	jefe = null
+	_anuncio_etapa_t = 2.6
 	prox_jefe = tiempo + Datos.JEFE_CADA_SEG
 	espera_jefe_hasta = prox_jefe + Datos.JEFE_ESPERA_MAX_SEG
 	_t_oleada = 3.2
@@ -1176,10 +1333,13 @@ func abrir_mejoras(es_jefe: bool) -> void:
 	cambiar_estado("mejora")
 	pantallas.preparar_mejoras(tirar_opciones(es_jefe), es_jefe)
 	Audio.sfx("nivel" if not es_jefe else "sector")
+	_tutorial.call_deferred("nivel")
 
 func elegir_mejora(id: String) -> void:
 	mejoras_tomadas[id] = int(mejoras_tomadas.get(id, 0)) + 1
 	N.aplicar_mejora(id)
+	if id == "bomb" and N.bombas == 1:
+		anuncio("¡BOMBA LISTA!", "ARRASTRA EL BOTÓN BOMBA PARA APUNTAR" if Ajustes.es_tactil() else "PULSA E (O CLIC DERECHO) PARA LANZARLA", 3.5)
 	ef.chispas(N.pos, 24, Color("ffe36b"), 150, 0.5)
 	ef.anillo(N.pos, 54, Color("ffe36b"), 0.45, 3)
 	Audio.sfx("mejora")
@@ -1226,13 +1386,33 @@ func continuar() -> void:
 func _fin_partida() -> void:
 	if estado == "fin":
 		return
+	_terminar_tutorial()
 	var record := Progreso.registrar(puntaje, tiempo, nivel, jefes_derrotados)
 	cambiar_estado("fin")
 	pantallas.preparar_fin(record)
+	_enviar_a_la_tabla()
 	Audio.musica("derrota", 0.6)
 	Audio.sfx("derrota")
 
+## Sube la partida a la tabla global (si hay cuenta) y deja el resultado para la pantalla de fin.
+func _enviar_a_la_tabla() -> void:
+	if not Red.configurado():
+		return
+	if not Red.conectado():
+		pantallas.estado_red = "REGÍSTRATE EN RÉCORDS PARA ENTRAR AL TOP 10 GLOBAL"
+		return
+	pantallas.estado_red = "ENVIANDO A LA TABLA GLOBAL…"
+	var r: Dictionary = await Red.enviar_partida(puntaje, tiempo, nivel, jefes_derrotados, N.id)
+	if r.ok:
+		var p := int(r.datos.get("puesto", 0))
+		pantallas.estado_red = ("¡ENTRASTE AL TOP 10! PUESTO #%d GLOBAL" if p <= 10 else "PUESTO #%d GLOBAL") % p
+	elif r.get("codigo", 0) == 0:
+		pantallas.estado_red = "SIN CONEXIÓN: SE ENVIARÁ MÁS TARDE"
+	else:
+		pantallas.estado_red = String(r.error).to_upper()
+
 func ir_al_menu() -> void:
+	_terminar_tutorial()
 	Audio.pausa_musical(false)
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
@@ -1247,6 +1427,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 			N.intentar_dash()
 		elif ev.is_action_pressed("reparar"):
 			reparar()
+		elif ev.is_action_pressed("bomba"):
+			if ev is InputEventMouseButton:
+				arrojar_bomba(Vector2.ZERO, get_global_mouse_position())
+			elif not arrojar_bomba():
+				Audio.sfx("ui_error", -6.0)
 
 func _notification(what: int) -> void:
 	# En el teléfono, salir de la app pausa la partida.

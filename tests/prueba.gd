@@ -20,6 +20,7 @@ func comprobar(cond: bool, msg: String) -> void:
 func _ready() -> void:
 	Ajustes.mostrar_danos = true
 	Progreso.guardado_activo = false
+	Progreso.saltar_tutorial()
 	Progreso.mejor_puntaje = 0
 	juego = load("res://scenes/juego.tscn").instantiate()
 	get_tree().root.add_child.call_deferred(juego)
@@ -91,6 +92,9 @@ func _process(delta: float) -> void:
 	if v.y > 0.2: Input.action_press("mover_abajo", v.y)
 	if v.length() > 0.9 and N.dash_cd <= 0.0:
 		N.intentar_dash()
+	if juego.estado == "jugando" and N.bomba_cargas > 0 and juego.enemigos.size() >= 4:
+		if juego.arrojar_bomba():
+			marcas["bombas_lanzadas"] = marcas.get("bombas_lanzadas", 0) + 1
 	match juego.estado:
 		"mejora":
 			marcas["mejoras"] = marcas.get("mejoras", 0) + 1

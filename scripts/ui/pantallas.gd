@@ -11,6 +11,8 @@ var _boton_reroll: Boton
 var _boton_reparar: Boton
 var _datos_fin := {}
 var _estado := ""
+var tutorial: Tutorial
+var estado_red := ""   ## línea de la tabla global en la pantalla de fin
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -20,6 +22,9 @@ func _ready() -> void:
 	_construir_mejora()
 	_construir_pausa()
 	_construir_fin()
+	tutorial = Tutorial.new()
+	add_child(tutorial)
+	tutorial.cerrado.connect(func(): juego._tutorial_cerrado())
 	mostrar("jugando")
 
 func _capa() -> Control:
@@ -90,7 +95,10 @@ func preparar_mejoras(opciones: Array, es_jefe: bool) -> void:
 		return
 	_refrescar_mejora()
 	await get_tree().process_frame
-	if _tarjetas.get_child_count() > 0 and not Ajustes.es_tactil():
+	enfocar_mejora()
+
+func enfocar_mejora() -> void:
+	if _tarjetas.get_child_count() > 0 and not Ajustes.es_tactil() and not tutorial.abierto():
 		_tarjetas.get_child(0).grab_focus()
 
 func _refrescar_mejora() -> void:
@@ -132,6 +140,7 @@ func _construir_fin() -> void:
 
 func preparar_fin(record: bool) -> void:
 	_datos_fin = {"record": record}
+	estado_red = ""
 
 # ------------------------------------------------------------------ común
 func mostrar(estado: String) -> void:
@@ -151,7 +160,7 @@ func _process(_d: float) -> void:
 		queue_redraw()
 
 func _draw() -> void:
-	if _estado == "jugando" or juego == null:
+	if _estado == "jugando" or _estado == "tutorial" or juego == null:
 		return
 	var t := get_viewport_rect().size
 	draw_rect(Rect2(Vector2.ZERO, t), Color(0.02, 0.02, 0.07, 0.72))
@@ -178,3 +187,6 @@ func _draw() -> void:
 				var yy := y + 44 + i * 14
 				Texto.dibujar(self, Vector2(cx - 8, yy), filas[i][0], 8, Color(0.7, 0.8, 1.0), HORIZONTAL_ALIGNMENT_RIGHT)
 				Texto.dibujar(self, Vector2(cx + 8, yy), filas[i][1], 8, Color.WHITE)
+			if estado_red != "":
+				var dorado := "TOP 10" in estado_red or "PUESTO" in estado_red
+				Texto.dibujar(self, Vector2(cx, y + 44 + filas.size() * 14 + 4), estado_red, 7, Color("ffd23a") if dorado else Color(0.7, 0.8, 1.0), HORIZONTAL_ALIGNMENT_CENTER)

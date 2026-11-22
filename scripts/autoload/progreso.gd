@@ -7,6 +7,7 @@ var mejor_puntaje := 0
 var mejor_tiempo := 0.0
 var nave_equipada := "drift"
 var registros: Array = []   ## [{puntaje, tiempo, nivel, jefes}] ordenados, máximo 5
+var tutorial: Dictionary = {}   ## ventanas de tutorial ya vistas (id -> true)
 
 func _ready() -> void:
 	var c := ConfigFile.new()
@@ -15,8 +16,14 @@ func _ready() -> void:
 		mejor_tiempo = c.get_value("records", "tiempo", 0.0)
 		registros = c.get_value("records", "lista", [])
 		nave_equipada = c.get_value("hangar", "nave", "drift")
+		tutorial = c.get_value("tutorial", "visto", {})
 	if not nave_desbloqueada(nave_equipada):
 		nave_equipada = "drift"
+
+## "Repetir tutorial" del menú: la próxima partida vuelve a ser de aprendizaje.
+func reiniciar_tutorial() -> void:
+	tutorial = {}
+	guardar()
 
 ## Las pruebas automáticas lo desactivan para no tocar los récords reales.
 var guardado_activo := true
@@ -29,7 +36,20 @@ func guardar() -> void:
 	c.set_value("records", "tiempo", mejor_tiempo)
 	c.set_value("records", "lista", registros)
 	c.set_value("hangar", "nave", nave_equipada)
+	c.set_value("tutorial", "visto", tutorial)
 	c.save(RUTA)
+
+func tutorial_visto(id: String) -> bool:
+	return tutorial.has(id)
+
+func marcar_tutorial(id: String) -> void:
+	tutorial[id] = true
+	guardar()
+
+## Las pruebas automáticas lo usan para que no salgan las ventanas.
+func saltar_tutorial() -> void:
+	for id in ["controles", "mecanicas", "nivel", "jefe"]:
+		tutorial[id] = true
 
 func nave_desbloqueada(id: String) -> bool:
 	return mejor_puntaje >= int(Datos.nave(id).puntaje)

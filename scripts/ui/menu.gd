@@ -8,6 +8,11 @@ var _ajustes: Control
 var _indice := 0
 var _t := 0.0
 var _boton_equipar: Boton
+var _guia: Tutorial
+var _posiciones: Posiciones
+var _top: PanelTop10          ## top 10 global a la derecha del inicio
+var _perfil: PerfilPiloto
+const ANCHO_TOP := 232.0
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -17,12 +22,17 @@ func _ready() -> void:
 			_indice = i
 	_inicio = _vista_nueva()
 	var v := _columna(_inicio)
-	_espacio(v, 150)
+	v.offset_right = -(ANCHO_TOP + 18.0)   # columna a la izquierda; a la derecha el top 10
+	_espacio(v, 146)
 	var jugar := _boton(v, "JUGAR", Color("ffe36b"), 190, 36, 12)
 	jugar.pulsado.connect(_jugar)
 	var f := _fila(v)
 	_boton(f, "HANGAR", Color("5ad1ff"), 92, 28).pulsado.connect(func(): _ir("hangar"))
+	var rec := _boton(f, "MARCADORES", Color("ffd23a"), 104, 28)
+	rec.pulsado.connect(func(): _ir("records"))
 	_boton(f, "AJUSTES", Color("c58cff"), 92, 28).pulsado.connect(func(): _ir("ajustes"))
+	var ayuda := _boton(v, "CÓMO JUGAR", Color("19e6ff"), 190, 24, 8)
+	ayuda.pulsado.connect(func(): _guia.abrir_guia())
 	if Datos.URL_DONACIONES != "":
 		var apoyar := _boton(v, "APOYAR", Color("ff7aa8"), 120, 24, 8)
 		apoyar.icono = Datos.tex("res://art/hud/heart.png")
@@ -45,6 +55,26 @@ func _ready() -> void:
 	c.add_child(PanelAjustes.new())
 	av.add_child(c)
 	_boton(av, "VOLVER", Color("ff7892"), 120, 26).pulsado.connect(func(): _ir("inicio"))
+	_top = PanelTop10.new()
+	_top.anchor_left = 1.0
+	_top.anchor_right = 1.0
+	_top.anchor_bottom = 1.0
+	_top.offset_left = -ANCHO_TOP - 10.0
+	_top.offset_right = -10.0
+	_top.offset_top = 14.0
+	_top.offset_bottom = -14.0
+	_inicio.add_child(_top)
+	_perfil = PerfilPiloto.new()
+	add_child(_perfil)
+	_top.ver_perfil.connect(func(id: String): _perfil.abrir(id))
+	_posiciones = Posiciones.new()
+	_posiciones.visible = false
+	add_child(_posiciones)
+	_posiciones.volver.connect(func(): _ir("inicio"))
+	_guia = Tutorial.new()
+	add_child(_guia)
+	_guia.cerrado.connect(func(): _ir("inicio"))
+	_guia.repetir.connect(_jugar)
 	_ir("inicio")
 	if "--jugar" in OS.get_cmdline_user_args():
 		_jugar.call_deferred()
@@ -87,6 +117,15 @@ func _ir(v: String) -> void:
 	_inicio.visible = v == "inicio"
 	_hangar.visible = v == "hangar"
 	_ajustes.visible = v == "ajustes"
+	_posiciones.visible = v == "records"
+	if v == "inicio" and _top:
+		_top.refrescar()
+	if v == "records":
+		_posiciones.abrir()
+		if not Ajustes.es_tactil():
+			await get_tree().process_frame
+			_posiciones._b_global.grab_focus()
+		return
 	if v == "hangar":
 		_refrescar_hangar()
 	if not Ajustes.es_tactil():
@@ -122,6 +161,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if _vista == "hangar":
 		if ev.is_action_pressed("ui_left"): _cambiar_nave(-1)
 		elif ev.is_action_pressed("ui_right"): _cambiar_nave(1)
+	if _guia.abierto() or _vista == "records" or _perfil.visible:
+		return
 	if ev.is_action_pressed("ui_cancel") and _vista != "inicio":
 		Audio.sfx("ui_atras")
 		_ir("inicio")
@@ -136,14 +177,11 @@ func _draw() -> void:
 	match _vista:
 		"inicio":
 			var logo := Datos.tex("res://art/menu/logo.png")
-			var w = min(330.0, t.x * 0.6)
+			var izq := (t.x - ANCHO_TOP - 18.0) * 0.5   # centro de la columna izquierda
+			var w = min(300.0, t.x - ANCHO_TOP - 40.0)
 			var h = w * logo.get_height() / logo.get_width()
 			var flota := sin(_t * 1.6) * 3.0
-			draw_texture_rect(logo, Rect2(Vector2(cx - w * 0.5, 14 + flota), Vector2(w, h)), false)
-			if Progreso.mejor_puntaje > 0:
-				Texto.dibujar(self, Vector2(cx, t.y - 30), "RÉCORD %d · MEJOR TIEMPO %s" % [Progreso.mejor_puntaje, Progreso.formato_tiempo(Progreso.mejor_tiempo)], 7, Color(0.8, 0.9, 1.0, 0.85), HORIZONTAL_ALIGNMENT_CENTER)
-			var pista := "TOCA JUGAR" if Ajustes.es_tactil() else "ENTER PARA JUGAR · FLECHAS/WASD PARA MOVER · ESPACIO: DASH"
-			Texto.dibujar(self, Vector2(cx, t.y - 14), pista, 6, Color(0.7, 0.8, 1.0, 0.5 + 0.3 * sin(_t * 3.0)), HORIZONTAL_ALIGNMENT_CENTER)
+			draw_texture_rect(logo, Rect2(Vector2(izq - w * 0.5, 14 + flota), Vector2(w, h)), false)
 		"hangar":
 			var n: Dictionary = Datos.NAVES[_indice]
 			var libre := Progreso.nave_desbloqueada(n.id)

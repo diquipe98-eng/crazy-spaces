@@ -2,6 +2,7 @@ extends Node
 ## Capturas del menú: inicio, hangar y ajustes.
 func _ready() -> void:
 	Progreso.guardado_activo = false
+	Progreso.saltar_tutorial()
 	var m = load("res://scenes/menu.tscn").instantiate()
 	add_child(m)
 	DirAccess.make_dir_recursive_absolute("user://capturas")
