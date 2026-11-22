@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="https://diquipe98-eng.github.io/crazy-spaces/"><b>▶ JUGAR EN EL NAVEGADOR</b></a>
+  <!-- ITCH: &nbsp;·&nbsp; <a href="https://USUARIO.itch.io/crazy-spaces"><b>itch.io</b></a> -->
   <!-- DONACIONES: reemplaza este comentario por tu botón, p. ej.
   &nbsp;·&nbsp; <a href="https://ko-fi.com/USUARIO"><b>♥ APOYAR EL JUEGO</b></a> -->
 </p>
@@ -25,5 +26,7 @@ Cada push a `main` exporta la versión web y la publica en GitHub Pages (`.githu
 Diseño y balance: [`docs/diseno.md`](docs/diseno.md). Créditos y licencias de terceros: [`CREDITOS.md`](CREDITOS.md).
 
 ## Licencia
+**Crazy Space's no es un proyecto de código abierto.** El código está publicado para que se pueda ver,
+pero no se permite copiarlo, modificarlo, redistribuirlo ni venderlo sin permiso escrito del autor.
 © Crazy Space's. Código y arte propios: todos los derechos reservados (ver `LICENSE`).
 La música, los efectos de sonido y la fuente son de terceros con licencias libres (CC0 / OFL), ver `CREDITOS.md`.
