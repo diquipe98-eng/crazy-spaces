@@ -43,6 +43,11 @@ var _filtro: AudioEffectLowPassFilter
 var _filtro_hz := 20000.0
 var _filtro_obj := 20000.0
 var sector := 0
+## En la web el navegador no deja sonar nada hasta el primer toque/clic/tecla, y lo que
+## se pide antes se pierde: la música pedida antes se guarda y arranca en ese momento.
+var _desbloqueado := not OS.has_feature("web")
+var _clave_pendiente := ""
+var _fundido_pendiente := 0.8
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -129,7 +134,21 @@ func sfx(nombre: String, volumen_extra := 0.0) -> void:
 	_voces[nombre] = activas
 
 # ---------------------------------------------------------------- música
+func _input(ev: InputEvent) -> void:
+	if _desbloqueado:
+		return
+	var gesto := (ev is InputEventMouseButton or ev is InputEventScreenTouch or ev is InputEventKey or ev is InputEventJoypadButton) and ev.is_pressed()
+	if not gesto:
+		return
+	_desbloqueado = true
+	if _clave_pendiente != "":
+		musica(_clave_pendiente, _fundido_pendiente)
+
 func musica(clave: String, fundido := 0.8) -> void:
+	if not _desbloqueado:
+		_clave_pendiente = clave
+		_fundido_pendiente = fundido
+		return
 	var ruta := _ruta(clave)
 	if ruta == _actual:
 		return
