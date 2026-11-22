@@ -96,6 +96,8 @@ func _guardar_sesion(d: Dictionary, nom: String) -> void:
 	expira = Time.get_unix_time_from_system() + float(d.get("expires_in", 3600))
 	uid = String(d.get("user", {}).get("id", ""))
 	nombre = nom.to_upper()
+	if nombre != "" and Progreso.piloto != nombre:
+		Progreso.cambiar_piloto(nombre)   # el nombre local sigue al de la cuenta
 	_guardar()
 	sesion_cambiada.emit()
 

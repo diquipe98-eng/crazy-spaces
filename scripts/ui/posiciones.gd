@@ -325,6 +325,8 @@ func _abrir_form(modo: String) -> void:
 	_form_ok.texto = "CREAR PILOTO" if modo == "registro" else "ENTRAR"
 	_form_cambiar.texto = "YA TENGO CUENTA" if modo == "registro" else "CREAR CUENTA"
 	_campo_clave.text = ""
+	if _campo_nombre.text == "":
+		_campo_nombre.text = Progreso.piloto
 	_campo_nombre.grab_focus.call_deferred()
 	_form.queue_redraw()
 
@@ -398,7 +400,7 @@ func _draw() -> void:
 	var x := cu.get_center().x
 	var y := cu.position.y + 20
 	if not Red.configurado():
-		Texto.dibujar(self, Vector2(x, y), "MODO SIN CONEXIÓN", 8, Neon.GRIS, HORIZONTAL_ALIGNMENT_CENTER)
+		Texto.dibujar(self, Vector2(x, y), Progreso.piloto if Progreso.piloto != "" else "MODO SIN CONEXIÓN", 8, Neon.AMARILLO if Progreso.piloto != "" else Neon.GRIS, HORIZONTAL_ALIGNMENT_CENTER)
 		Texto.dibujar(self, Vector2(x, y + 30), "RÉCORD LOCAL", 6, Neon.GRIS, HORIZONTAL_ALIGNMENT_CENTER)
 		Texto.dibujar(self, Vector2(x, y + 46), "%d" % Progreso.mejor_puntaje, 12, Neon.AMARILLO, HORIZONTAL_ALIGNMENT_CENTER)
 	elif Red.conectado():

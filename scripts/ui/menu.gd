@@ -12,6 +12,8 @@ var _guia: Tutorial
 var _posiciones: Posiciones
 var _top: PanelTop10          ## top 10 global a la derecha del inicio
 var _perfil: PerfilPiloto
+var _bienvenida: Bienvenida
+var _b_jugar: Boton
 const ANCHO_TOP := 232.0
 
 func _ready() -> void:
@@ -26,6 +28,7 @@ func _ready() -> void:
 	_espacio(v, 146)
 	var jugar := _boton(v, "JUGAR", Color("ffe36b"), 190, 36, 12)
 	jugar.pulsado.connect(_jugar)
+	_b_jugar = jugar
 	var f := _fila(v)
 	_boton(f, "HANGAR", Color("5ad1ff"), 92, 28).pulsado.connect(func(): _ir("hangar"))
 	var rec := _boton(f, "MARCADORES", Color("ffd23a"), 104, 28)
@@ -54,7 +57,9 @@ func _ready() -> void:
 	var c := CenterContainer.new()
 	c.add_child(PanelAjustes.new())
 	av.add_child(c)
-	_boton(av, "VOLVER", Color("ff7892"), 120, 26).pulsado.connect(func(): _ir("inicio"))
+	var af := _fila(av)
+	_boton(af, "CAMBIAR NOMBRE", Color("ffe36b"), 150, 26, 8).pulsado.connect(func(): _bienvenida.abrir(false))
+	_boton(af, "VOLVER", Color("ff7892"), 120, 26).pulsado.connect(func(): _ir("inicio"))
 	_top = PanelTop10.new()
 	_top.anchor_left = 1.0
 	_top.anchor_right = 1.0
@@ -75,9 +80,14 @@ func _ready() -> void:
 	add_child(_guia)
 	_guia.cerrado.connect(func(): _ir("inicio"))
 	_guia.repetir.connect(_jugar)
+	_bienvenida = Bienvenida.new()
+	add_child(_bienvenida)
+	_bienvenida.cerrado.connect(func(): _ir(_vista))
 	_ir("inicio")
 	if "--jugar" in OS.get_cmdline_user_args():
 		_jugar.call_deferred()
+	elif Progreso.piloto == "":
+		_bienvenida.abrir(true)
 
 func _vista_nueva() -> Control:
 	var c := Control.new()
@@ -128,7 +138,7 @@ func _ir(v: String) -> void:
 		return
 	if v == "hangar":
 		_refrescar_hangar()
-	if not Ajustes.es_tactil():
+	if not Ajustes.es_tactil() and not _bienvenida.abierta():
 		await get_tree().process_frame
 		var bs := (_inicio if v == "inicio" else (_hangar if v == "hangar" else _ajustes)).find_children("*", "Boton", true, false)
 		if bs.size() > 0:
@@ -161,7 +171,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if _vista == "hangar":
 		if ev.is_action_pressed("ui_left"): _cambiar_nave(-1)
 		elif ev.is_action_pressed("ui_right"): _cambiar_nave(1)
-	if _guia.abierto() or _vista == "records" or _perfil.visible:
+	if _guia.abierto() or _vista == "records" or _perfil.visible or _bienvenida.abierta():
 		return
 	if ev.is_action_pressed("ui_cancel") and _vista != "inicio":
 		Audio.sfx("ui_atras")
@@ -182,6 +192,12 @@ func _draw() -> void:
 			var h = w * logo.get_height() / logo.get_width()
 			var flota := sin(_t * 1.6) * 3.0
 			draw_texture_rect(logo, Rect2(Vector2(izq - w * 0.5, 8 + flota), Vector2(w, h)), false)
+			if Progreso.piloto != "":
+				var y := _b_jugar.global_position.y - global_position.y - 7.0   # justo encima de JUGAR
+				var et := "PILOTO  "
+				var ancho := Texto.ancho(et, 6) + Texto.ancho(Progreso.piloto, 8)
+				Texto.dibujar(self, Vector2(izq - ancho * 0.5, y), et, 6, Color(0.7, 0.8, 1.0, 0.85))
+				Texto.dibujar(self, Vector2(izq - ancho * 0.5 + Texto.ancho(et, 6), y + 1), Progreso.piloto, 8, Color("ffe36b"))
 		"hangar":
 			var n: Dictionary = Datos.NAVES[_indice]
 			var libre := Progreso.nave_desbloqueada(n.id)

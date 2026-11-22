@@ -8,6 +8,7 @@ var mejor_tiempo := 0.0
 var nave_equipada := "drift"
 var registros: Array = []   ## [{puntaje, tiempo, nivel, jefes}] ordenados, máximo 5
 var tutorial: Dictionary = {}   ## ventanas de tutorial ya vistas (id -> true)
+var piloto := ""                ## nombre elegido en la bienvenida ("" = primera vez)
 
 func _ready() -> void:
 	var c := ConfigFile.new()
@@ -17,6 +18,7 @@ func _ready() -> void:
 		registros = c.get_value("records", "lista", [])
 		nave_equipada = c.get_value("hangar", "nave", "drift")
 		tutorial = c.get_value("tutorial", "visto", {})
+		piloto = c.get_value("perfil", "nombre", "")
 	if not nave_desbloqueada(nave_equipada):
 		nave_equipada = "drift"
 
@@ -37,6 +39,7 @@ func guardar() -> void:
 	c.set_value("records", "lista", registros)
 	c.set_value("hangar", "nave", nave_equipada)
 	c.set_value("tutorial", "visto", tutorial)
+	c.set_value("perfil", "nombre", piloto)
 	c.save(RUTA)
 
 func tutorial_visto(id: String) -> bool:
@@ -48,8 +51,42 @@ func marcar_tutorial(id: String) -> void:
 
 ## Las pruebas automáticas lo usan para que no salgan las ventanas.
 func saltar_tutorial() -> void:
+	if piloto == "":
+		piloto = "PRUEBA"
 	for id in ["controles", "mecanicas", "nivel", "jefe"]:
 		tutorial[id] = true
+
+func cambiar_piloto(n: String) -> void:
+	piloto = limpiar_nombre(n)
+	guardar()
+
+## Nombre que se propone la primera vez: el de la cuenta con la que entró, si no
+## el usuario del sistema (escritorio) y si no uno al azar.
+func nombre_sugerido() -> String:
+	if Red.conectado() and Red.nombre != "":
+		return Red.nombre
+	for v in ["USER", "USERNAME", "LOGNAME"]:
+		var n := limpiar_nombre(OS.get_environment(v))
+		if n.length() >= 3 and n not in ["ROOT", "WEB_USER", "USER", "ADMIN", "ADMINISTRATOR"]:
+			return n
+	return ""
+
+func nombre_al_azar() -> String:
+	return "PILOTO_%04d" % (randi() % 10000)
+
+## Mayúsculas, sin tildes, solo A-Z 0-9 _ y máximo 14 (lo mismo que acepta la tabla global).
+static func limpiar_nombre(n: String) -> String:
+	var s := n.strip_edges().to_upper().replace(" ", "_")
+	var desde := "ÁÉÍÓÚÜÑÀÈÌÒÙÂÊÎÔÛÇ"
+	var hacia := "AEIOUUNAEIOUAEIOUC"
+	var out := ""
+	for ch in s:
+		var k := desde.find(ch)
+		if k >= 0:
+			ch = hacia[k]
+		if (ch >= "A" and ch <= "Z") or (ch >= "0" and ch <= "9") or ch == "_":
+			out += ch
+	return out.substr(0, 14)
 
 func nave_desbloqueada(id: String) -> bool:
 	return mejor_puntaje >= int(Datos.nave(id).puntaje)
