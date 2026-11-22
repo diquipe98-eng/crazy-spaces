@@ -71,6 +71,8 @@ func _input(ev: InputEvent) -> void:
 			_soltar(ev.index)
 		return
 	if ev is InputEventScreenTouch:
+		if ev.pressed and Pantalla.en_boton(ev.position):
+			return   # botón de pantalla completa
 		if ev.pressed:
 			var b := _boton_en(ev.position)
 			if b == "bomba":

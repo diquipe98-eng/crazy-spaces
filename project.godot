@@ -23,6 +23,8 @@ Ajustes="*res://scripts/autoload/ajustes.gd"
 Progreso="*res://scripts/autoload/progreso.gd"
 Audio="*res://scripts/autoload/audio.gd"
 Red="*res://scripts/autoload/red.gd"
+Pantalla="*res://scripts/autoload/pantalla.gd"
+Mando="*res://scripts/autoload/mando.gd"
 
 [display]
 

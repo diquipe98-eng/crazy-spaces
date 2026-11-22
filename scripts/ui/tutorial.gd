@@ -80,6 +80,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
+	set_meta("modal", true)
 	_primario = _crear_boton("ENTENDIDO", CIAN, 9)
 	_primario.pulsado.connect(_siguiente)
 	_secundario = _crear_boton("SALTAR TUTORIAL", Color("8a93b8"), 7)

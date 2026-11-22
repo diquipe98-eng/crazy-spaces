@@ -18,6 +18,7 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
+	set_meta("modal", true)
 	_campo = LineEdit.new()
 	_campo.placeholder_text = "TU NOMBRE"
 	_campo.max_length = 14

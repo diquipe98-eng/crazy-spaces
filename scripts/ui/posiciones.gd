@@ -76,6 +76,7 @@ func _ready() -> void:
 	add_child(_perfil)
 	_perfil.cerrado.connect(_enfocar)
 	_form = Capa.new()
+	_form.set_meta("modal", true)
 	_form.dibujar = _dibujar_form
 	add_child(_form)
 	_campo_correo = _campo("TU@CORREO.COM", "correo")
