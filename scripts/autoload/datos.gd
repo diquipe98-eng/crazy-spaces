@@ -252,8 +252,8 @@ const URL_DONACIONES := "https://paypal.me/QUILLERBY"
 # La clave "anon / publishable" es pública por diseño: va dentro del juego.
 # Vacías = el juego funciona sin tabla global (solo récords locales).
 # ---------------------------------------------------------------------------
-const SUPABASE_URL := ""
-const SUPABASE_CLAVE := ""
+const SUPABASE_URL := "https://vloxmeyxqnskwmnbrafp.supabase.co"
+const SUPABASE_CLAVE := "sb_publishable_Yk3zSvzcfgC3hVkCZGLnlw_vHPRISQh"
 
 static func abrir_donaciones() -> void:
 	if URL_DONACIONES != "":
