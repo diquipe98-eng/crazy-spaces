@@ -1,0 +1,70 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/juego/juego.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/juego/fondo.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/juego/capa.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/ui/controles_tactiles.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/ui/pantallas.gd" id="6"]
+
+[sub_resource type="CanvasItemMaterial" id="aditivo"]
+blend_mode = 1
+
+[node name="Juego" type="Node2D"]
+script = ExtResource("1")
+
+[node name="CapaFondo" type="CanvasLayer" parent="."]
+layer = -10
+
+[node name="Fondo" type="Node2D" parent="CapaFondo"]
+script = ExtResource("2")
+
+[node name="Camara" type="Camera2D" parent="."]
+
+[node name="Mundo" type="Node2D" parent="."]
+
+[node name="Base" type="Node2D" parent="Mundo"]
+script = ExtResource("3")
+nombre = "base"
+
+[node name="Brillo" type="Node2D" parent="Mundo"]
+material = SubResource("aditivo")
+script = ExtResource("3")
+nombre = "brillo"
+
+[node name="Textos" type="Node2D" parent="Mundo"]
+script = ExtResource("3")
+nombre = "textos"
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 5
+
+[node name="Panel" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("4")
+
+[node name="Tactil" type="CanvasLayer" parent="."]
+layer = 6
+
+[node name="Controles" type="Control" parent="Tactil"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("5")
+
+[node name="Pantallas" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="Raiz" type="Control" parent="Pantallas"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("6")

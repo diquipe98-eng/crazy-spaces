@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/menu.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/juego/fondo.gd" id="2"]
+
+[node name="Menu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="CapaFondo" type="CanvasLayer" parent="."]
+layer = -10
+
+[node name="Fondo" type="Node2D" parent="CapaFondo"]
+script = ExtResource("2")
