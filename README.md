@@ -3,7 +3,7 @@
 <p align="center"><b>Roguelike de naves en pixel art.</b> Sobrevive a oleadas, mejora tu nave y derrota a 5 jefes.</p>
 
 <p align="center">
-  <a href="https://USUARIO.github.io/crazy-spaces/"><b>▶ JUGAR EN EL NAVEGADOR</b></a>
+  <a href="https://diquipe98-eng.github.io/crazy-spaces/"><b>▶ JUGAR EN EL NAVEGADOR</b></a>
   <!-- DONACIONES: reemplaza este comentario por tu botón, p. ej.
   &nbsp;·&nbsp; <a href="https://ko-fi.com/USUARIO"><b>♥ APOYAR EL JUEGO</b></a> -->
 </p>
