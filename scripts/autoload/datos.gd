@@ -245,7 +245,7 @@ const GIRO_TAM := {
 # Donaciones: enlace de Ko-fi, PayPal.me, Buy Me a Coffee, etc.
 # Mientras esté vacío, el botón APOYAR no aparece.
 # ---------------------------------------------------------------------------
-const URL_DONACIONES := ""
+const URL_DONACIONES := "https://paypal.me/QUILLERBY"
 
 # ---------------------------------------------------------------------------
 # Tabla de posiciones global (Supabase). Ver supabase/LEEME.md.

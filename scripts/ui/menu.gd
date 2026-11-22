@@ -178,10 +178,10 @@ func _draw() -> void:
 		"inicio":
 			var logo := Datos.tex("res://art/menu/logo.png")
 			var izq := (t.x - ANCHO_TOP - 18.0) * 0.5   # centro de la columna izquierda
-			var w = min(300.0, t.x - ANCHO_TOP - 40.0)
+			var w = min(270.0, t.x - ANCHO_TOP - 40.0)
 			var h = w * logo.get_height() / logo.get_width()
 			var flota := sin(_t * 1.6) * 3.0
-			draw_texture_rect(logo, Rect2(Vector2(izq - w * 0.5, 14 + flota), Vector2(w, h)), false)
+			draw_texture_rect(logo, Rect2(Vector2(izq - w * 0.5, 8 + flota), Vector2(w, h)), false)
 		"hangar":
 			var n: Dictionary = Datos.NAVES[_indice]
 			var libre := Progreso.nave_desbloqueada(n.id)
