@@ -1,0 +1,3 @@
+# Para la integración Supabase <-> GitHub: al hacer push a main, Supabase aplica
+# supabase/migrations/*.sql en el proyecto. El esquema completo sigue en esquema.sql.
+project_id = "crazy-spaces"
