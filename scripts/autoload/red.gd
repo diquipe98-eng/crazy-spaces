@@ -259,6 +259,9 @@ func _peticion(metodo: int, ruta: String, cuerpo = null, con_sesion := false) ->
 		return _fallo("Tu sesión expiró: vuelve a entrar", 401)
 	var h := HTTPRequest.new()
 	h.timeout = 12.0
+	# En la web el navegador ya descomprime la respuesta pero deja la cabecera
+	# Content-Encoding: si Godot intenta descomprimir otra vez, falla ("Sin conexión").
+	h.accept_gzip = false
 	add_child(h)
 	var cab := PackedStringArray([
 		"apikey: " + clave,
