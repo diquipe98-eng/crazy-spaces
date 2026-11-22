@@ -19,6 +19,15 @@ func _foto(nombre: String) -> void:
 	DirAccess.make_dir_recursive_absolute("user://capturas")
 	get_viewport().get_texture().get_image().save_png("user://capturas/red_%s.png" % nombre)
 
+## Imita abrir el enlace del correo (el servidor falso devuelve la sesión).
+func _falso_confirmar(correo: String) -> Dictionary:
+	var h := HTTPRequest.new()
+	add_child(h)
+	h.request(Red.url + "/falso/confirmar", ["apikey: " + Red.clave, "Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({"email": correo}))
+	var r: Array = await h.request_completed
+	h.queue_free()
+	return JSON.parse_string((r[3] as PackedByteArray).get_string_from_utf8())
+
 func _ready() -> void:
 	Progreso.guardado_activo = false
 	Progreso.saltar_tutorial()
@@ -26,20 +35,22 @@ func _ready() -> void:
 	Red.top = []
 	print("TABLA GLOBAL (", Red.url, ")")
 	_ok(Red.configurado(), "configurada por línea de comandos")
-	var r := await Red.registrar("ab", "123456")
+	var r := await Red.registrar("uno@test.com", "ab", "123456")
 	_ok(not r.ok and "entre 3 y 14" in r.error, "rechaza nombres cortos: " + r.error)
-	r = await Red.registrar("PILOTO_UNO", "123")
+	r = await Red.registrar("uno@test.com", "PILOTO_UNO", "123")
 	_ok(not r.ok and "6" in r.error, "rechaza contraseñas cortas: " + r.error)
-	r = await Red.registrar("piloto_uno", "secreta1")
+	r = await Red.registrar("Uno@Test.com", "piloto_uno", "secreta1")
 	_ok(r.ok and Red.conectado() and Red.nombre == "PILOTO_UNO", "registro correcto (nombre en mayúsculas)")
 	var yo := Red.uid
-	r = await Red.registrar("PILOTO_UNO", "otra123")
+	r = await Red.registrar("otro@test.com", "PILOTO_UNO", "otra123")
 	_ok(not r.ok and "en uso" in r.error, "nombre repetido: " + r.error)
+	r = await Red.registrar("sin-arroba", "OTRO", "otra123")
+	_ok(not r.ok and "correo" in r.error, "correo inválido: " + r.error)
 	Red.salir()
 	_ok(not Red.conectado(), "cerrar sesión")
-	r = await Red.entrar("PILOTO_UNO", "mala123")
+	r = await Red.entrar("uno@test.com", "mala123")
 	_ok(not r.ok and "incorrectos" in r.error, "contraseña mala: " + r.error)
-	r = await Red.entrar("piloto_uno", "secreta1")
+	r = await Red.entrar("UNO@test.com ", "secreta1")
 	_ok(r.ok and Red.uid == yo, "entrar con la cuenta")
 	r = await Red.enviar_partida(999999, 30.0, 5, 3, "drift")
 	_ok(not r.ok and "verificación" in r.error, "rechaza puntajes imposibles: " + r.error)
@@ -52,10 +63,10 @@ func _ready() -> void:
 	# más pilotos para llenar la tabla
 	for i in 11:
 		Red.salir()
-		await Red.registrar("RIVAL_%d" % i, "clave%d00" % i)
+		await Red.registrar("rival%d@test.com" % i, "RIVAL_%d" % i, "clave%d00" % i)
 		await Red.enviar_partida(1000 + i * 900, 200.0 + i * 20, 5 + i, i % 4, ["drift", "comet", "spectra", "vortex"][i % 4])
 	Red.salir()
-	await Red.entrar("PILOTO_UNO", "secreta1")
+	await Red.entrar("uno@test.com", "secreta1")
 	r = await Red.cargar_top()
 	_ok(r.ok and Red.top.size() == 10, "el top tiene 10 pilotos (hay 12)")
 	var orden := true
@@ -69,14 +80,14 @@ func _ready() -> void:
 	_ok(r.ok and r.datos.nave_favorita == "comet", "nave favorita = la más usada")
 	# marcadores: todos los registrados, también los que no han jugado
 	Red.salir()
-	await Red.registrar("NOVATO", "novato1")
+	await Red.registrar("novato@test.com", "NOVATO", "novato1")
 	r = await Red.cargar_ranking(0, 10)
 	_ok(r.ok and int(r.datos.total) == 13 and r.datos.filas.size() == 10, "marcadores: 13 pilotos registrados, página de 10")
 	r = await Red.cargar_ranking(10, 10)
 	_ok(r.ok and r.datos.filas.size() == 3 and r.datos.filas[-1].nombre == "NOVATO" and r.datos.filas[-1].puntaje == null, "página 2: el que no ha jugado va al final, sin puntaje")
 	_ok(await Red.posicion_de(Red.uid) == 13, "posición de un piloto para saltar a su página")
 	Red.salir()
-	await Red.entrar("PILOTO_UNO", "secreta1")
+	await Red.entrar("uno@test.com", "secreta1")
 	# interfaz: inicio con el top 10 a la derecha
 	var menu = load("res://scenes/menu.tscn").instantiate()
 	add_child(menu)
@@ -113,6 +124,7 @@ func _ready() -> void:
 	pos._perfil.cerrar()
 	Red.salir()
 	pos._abrir_form("registro")
+	pos._campo_correo.text = "nuevo@test.com"
 	pos._campo_nombre.text = "NUEVO_PILOTO"
 	pos._campo_clave.text = "1"
 	await pos._enviar_form()
@@ -125,5 +137,27 @@ func _ready() -> void:
 		await get_tree().process_frame
 	_ok(pos._pagina == 1, "al registrarse salta a su página")
 	await _foto("conectado")
+	# olvidé mi contraseña + enlace del correo (type=recovery) + contraseña nueva
+	Red.salir()
+	pos._abrir_form("entrar")
+	_ok(pos._form_olvide.visible, "ENTRAR ofrece OLVIDÉ MI CONTRASEÑA")
+	pos._abrir_form("recuperar")
+	pos._campo_correo.text = "nuevo@test.com"
+	await pos._enviar_form()
+	_ok(pos._form_modo == "entrar" and pos._form_aviso != "", "pedir el correo de recuperación")
+	await _foto("recuperar")
+	var enlace := await _falso_confirmar("nuevo@test.com")
+	enlace["type"] = "recovery"
+	await Red.aplicar_enlace(enlace)
+	for i in 5:
+		await get_tree().process_frame
+	_ok(Red.conectado() and pos._form.visible and pos._form_modo == "nueva_clave", "el enlace abre el formulario de contraseña nueva")
+	await _foto("nueva_clave")
+	pos._campo_clave.text = "nueva_secreta"
+	await pos._enviar_form()
+	_ok(not pos._form.visible and not Red.recuperando, "guardar la contraseña nueva")
+	Red.salir()
+	r = await Red.entrar("nuevo@test.com", "nueva_secreta")
+	_ok(r.ok, "entrar con la contraseña nueva")
 	print("RESULTADO: ", "OK" if fallos == 0 else "%d FALLOS" % fallos)
 	get_tree().quit(0 if fallos == 0 else 1)

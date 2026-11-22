@@ -3,9 +3,9 @@
 -- Pegar completo en: Supabase → SQL Editor → New query → Run.
 -- Se puede ejecutar varias veces sin romper nada.
 --
--- Cuentas: "nombre de piloto + contraseña". El juego convierte el nombre en un
--- correo interno (<nombre>@jugadores.crazyspaces.app), así que en
--- Authentication → Sign In / Providers → Email hay que DESACTIVAR "Confirm email".
+-- Cuentas: correo + contraseña, con el nombre de piloto en los metadatos
+-- (raw_user_meta_data.nombre). "Confirm email" puede estar activado o no:
+-- el juego maneja los dos casos. Ver supabase/LEEME.md.
 --
 -- Nadie escribe directo en las tablas: el juego solo llama a las funciones de abajo.
 -- =====================================================================

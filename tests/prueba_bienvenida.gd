@@ -31,6 +31,11 @@ func _ready() -> void:
 	for i in 5:
 		await get_tree().process_frame
 	await _captura("menu_con_nombre")
+	menu._ir("ajustes")
+	for i in 5:
+		await get_tree().process_frame
+	await _captura("ajustes")
+	menu._ir("inicio")
 	# cambiar desde ajustes
 	b.abrir(false)
 	if b._campo.text != "NOVA_KID":

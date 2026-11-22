@@ -1,12 +1,15 @@
 """Imitación mínima de Supabase (Auth + las funciones de supabase/esquema.sql)
 para probar el juego sin conexión real. Guarda todo en memoria.
-Uso: python3 tests/servidor_falso.py 8790"""
+Uso: python3 tests/servidor_falso.py 8790 [--confirmar]
+--confirmar: como Supabase con "Confirm email": el registro no abre sesión hasta
+confirmar (las pruebas lo simulan con POST /falso/confirmar {"email"})."""
 import json, sys, time, uuid, re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 CLAVE = "clave-falsa"
-usuarios = {}     # email -> {id, password, nombre}
+CONFIRMAR = "--confirmar" in sys.argv
+usuarios = {}     # email -> {id, password, nombre, confirmado}
 tokens = {}       # access -> (uid, vence)
 refrescos = {}    # refresh -> uid
 perfiles = {}     # uid -> {...}
@@ -43,11 +46,17 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(cuerpo)
 
+    def do_GET(self):
+        self.do_POST()
+
+    def do_PUT(self):
+        self.do_POST()
+
     def do_POST(self):
         if self.headers.get("apikey") != CLAVE:
             return self.responder(401, {"message": "Invalid API key"})
         n = int(self.headers.get("Content-Length", 0))
-        cuerpo = json.loads(self.rfile.read(n) or b"{}")
+        cuerpo = json.loads(self.rfile.read(n) or b"{}") if n else {}
         u = urlparse(self.path)
         q = parse_qs(u.query)
         aut = self.headers.get("Authorization", "").replace("Bearer ", "")
@@ -66,14 +75,35 @@ class H(BaseHTTPRequestHandler):
             if not re.fullmatch(r"[A-Z0-9_]{3,14}", nombre) or any(p["nombre"] == nombre for p in perfiles.values()):
                 return self.responder(500, {"code": 500, "error_code": "unexpected_failure", "msg": "Database error saving new user"})
             nuevo = str(uuid.uuid4())
-            usuarios[email] = {"id": nuevo, "password": cuerpo["password"], "nombre": nombre}
+            if "@" not in email:
+                return self.responder(400, {"code": 400, "error_code": "email_address_invalid", "msg": "invalid"})
+            usuarios[email] = {"id": nuevo, "password": cuerpo["password"], "nombre": nombre, "confirmado": not CONFIRMAR}
             perfiles[nuevo] = {"id": nuevo, "nombre": nombre, "nave_favorita": "drift", "creado": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime())}
+            if CONFIRMAR:
+                return self.responder(200, {"id": nuevo, "email": email, "user_metadata": {"nombre": nombre}})
             return self.responder(200, sesion(nuevo, int(q.get("vida", ["3600"])[0])))
+        if u.path == "/falso/confirmar":       # imita abrir el enlace del correo
+            x = usuarios[cuerpo["email"].lower()]
+            x["confirmado"] = True
+            return self.responder(200, sesion(x["id"]))
+        if u.path == "/auth/v1/recover":
+            return self.responder(200, {})
+        if u.path == "/auth/v1/user":
+            if not uid:
+                return self.responder(401, {"code": 401, "error_code": "bad_jwt", "msg": "invalid JWT"})
+            x = next(v for v in usuarios.values() if v["id"] == uid)
+            if self.command == "PUT":
+                if cuerpo.get("password") == x["password"]:
+                    return self.responder(422, {"code": 422, "error_code": "same_password", "msg": "same"})
+                x["password"] = cuerpo["password"]
+            return self.responder(200, {"id": uid, "user_metadata": {"nombre": x["nombre"]}})
         if u.path == "/auth/v1/token":
             if q.get("grant_type") == ["password"]:
                 x = usuarios.get(cuerpo["email"].lower())
                 if not x or x["password"] != cuerpo["password"]:
                     return self.responder(400, {"code": 400, "error_code": "invalid_credentials", "msg": "Invalid login credentials"})
+                if not x["confirmado"]:
+                    return self.responder(400, {"code": 400, "error_code": "email_not_confirmed", "msg": "Email not confirmed"})
                 return self.responder(200, sesion(x["id"]))
             uid2 = refrescos.pop(cuerpo.get("refresh_token", ""), None)
             if not uid2:

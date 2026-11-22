@@ -1,16 +1,18 @@
 # Activar la tabla de posiciones global (Supabase, plan gratis)
 
 1. Crea una cuenta en https://supabase.com y un proyecto nuevo (elige la región más cercana a tus jugadores).
-2. **Authentication → Sign In / Providers → Email**: desactiva **"Confirm email"**.
-   Los jugadores se registran con nombre de piloto + contraseña; el juego usa un correo interno.
-3. **SQL Editor → New query**: pega todo `supabase/esquema.sql` y pulsa **Run**.
-4. **Project Settings → API**: copia la **Project URL** y la clave **anon / publishable**.
-5. Ponlas en `scripts/autoload/datos.gd`:
-   ```gdscript
-   const SUPABASE_URL := "https://xxxx.supabase.co"
-   const SUPABASE_CLAVE := "eyJ..."   # anon/publishable: es pública por diseño
-   ```
-   **Nunca** pongas la clave `service_role`/`secret`: esa sí da acceso total.
+2. **SQL Editor → New query**: pega todo `supabase/esquema.sql` y pulsa **Run**.
+3. **Authentication → URL Configuration → Site URL**: `https://diquipe98-eng.github.io/crazy-spaces/`
+   (ahí vuelven los enlaces de "confirmar correo" y "olvidé mi contraseña"; el juego los lee
+   al abrirse y deja la sesión iniciada o pide la contraseña nueva).
+4. **Authentication → Sign In / Providers → Email**: "Confirm email"
+   - **activado**: el jugador debe abrir el correo antes de entrar. El correo integrado de
+     Supabase solo envía unos pocos por hora: para un juego público configura SMTP propio
+     (Authentication → Emails → SMTP Settings, p. ej. Resend o Brevo, gratis).
+   - **desactivado**: entra al momento; el correo solo se usa para entrar y recuperar la clave.
+5. **Project Settings → API Keys**: copia la **Project URL** y la clave **publishable / anon**.
+6. Ponlas en `scripts/autoload/datos.gd` (`SUPABASE_URL`, `SUPABASE_CLAVE`).
+   **Nunca** pongas la clave `secret`/`service_role`: esa da acceso total.
 
 Sin esos dos valores el juego funciona igual, solo con récords locales.
 
@@ -27,6 +29,8 @@ Sin esos dos valores el juego funciona igual, solo con récords locales.
 ```
 python3 tests/servidor_falso.py 8790 &
 flatpak run org.godotengine.Godot --path . res://tests/prueba_red.tscn -- --servidor=http://127.0.0.1:8790 --clave=clave-falsa
+python3 tests/servidor_falso.py 8791 --confirmar &     # con "Confirm email"
+flatpak run org.godotengine.Godot --path . res://tests/prueba_correo.tscn -- --servidor=http://127.0.0.1:8791 --clave=clave-falsa
 ```
 
 ## Marcadores (todos los pilotos)

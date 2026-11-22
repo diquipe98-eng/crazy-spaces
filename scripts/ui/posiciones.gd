@@ -32,14 +32,17 @@ var _b_cuenta2: Boton
 # capas
 var _perfil: PerfilPiloto
 var _form: Control
-var _form_modo := "registro"    ## registro | entrar
+var _form_modo := "registro"    ## registro | entrar | recuperar | nueva_clave
 var _form_error := ""
+var _form_aviso := ""           ## mensaje bueno (p. ej. "revisa tu correo")
 var _form_ocupado := false
+var _campo_correo: LineEdit
 var _campo_nombre: LineEdit
 var _campo_clave: LineEdit
 var _form_ok: Boton
 var _form_cambiar: Boton
 var _form_cancelar: Boton
+var _form_olvide: Boton
 
 class Capa extends Control:
 	var dibujar: Callable
@@ -75,13 +78,16 @@ func _ready() -> void:
 	_form = Capa.new()
 	_form.dibujar = _dibujar_form
 	add_child(_form)
-	_campo_nombre = _campo("NOMBRE DE PILOTO", false)
-	_campo_clave = _campo("CONTRASEÑA", true)
-	_campo_nombre.text_submitted.connect(func(_t2): _campo_clave.grab_focus())
+	_campo_correo = _campo("TU@CORREO.COM", "correo")
+	_campo_nombre = _campo("NOMBRE DE PILOTO", "nombre")
+	_campo_clave = _campo("CONTRASEÑA", "clave")
+	_campo_correo.text_submitted.connect(func(_t2): _siguiente_campo(_campo_correo))
+	_campo_nombre.text_submitted.connect(func(_t2): _siguiente_campo(_campo_nombre))
 	_campo_clave.text_submitted.connect(func(_t2): _enviar_form())
 	_form_ok = _boton("", Neon.AMARILLO, 9, _enviar_form, _form)
-	_form_cambiar = _boton("", Neon.CIAN, 7, func(): _abrir_form("entrar" if _form_modo == "registro" else "registro"), _form)
+	_form_cambiar = _boton("", Neon.CIAN, 7, func(): _abrir_form("registro" if _form_modo == "entrar" else "entrar"), _form)
 	_form_cancelar = _boton("CANCELAR", Neon.ROSA, 7, func(): _form.visible = false; _enfocar(), _form)
+	_form_olvide = _boton("OLVIDÉ MI CONTRASEÑA", Neon.GRIS, 6, func(): _abrir_form("recuperar"), _form)
 	Red.sesion_cambiada.connect(_actualizar_cuenta)
 	resized.connect(_colocar)
 	_colocar()
@@ -93,11 +99,13 @@ func _boton(texto: String, color: Color, tam: int, accion: Callable, padre: Cont
 	(padre if padre else self).add_child(b)
 	return b
 
-func _campo(placeholder: String, secreto: bool) -> LineEdit:
+func _campo(placeholder: String, tipo: String) -> LineEdit:
 	var c := LineEdit.new()
+	var secreto := tipo == "clave"
 	c.placeholder_text = placeholder
 	c.secret = secreto
-	c.max_length = 14 if not secreto else 64
+	c.max_length = {"nombre": 14, "clave": 64, "correo": 100}[tipo]
+	c.virtual_keyboard_type = {"nombre": LineEdit.KEYBOARD_TYPE_DEFAULT, "clave": LineEdit.KEYBOARD_TYPE_PASSWORD, "correo": LineEdit.KEYBOARD_TYPE_EMAIL_ADDRESS}[tipo]
 	c.add_theme_font_override("font", Datos.fuente)
 	c.add_theme_font_size_override("font_size", 10)
 	c.add_theme_color_override("font_color", Neon.BLANCO)
@@ -111,11 +119,11 @@ func _campo(placeholder: String, secreto: bool) -> LineEdit:
 		sb.content_margin_left = 8
 		sb.content_margin_right = 8
 		c.add_theme_stylebox_override(estado, sb)
-	if not secreto:
+	if tipo == "nombre":
 		c.text_changed.connect(func(t2: String):
 			var col := c.caret_column
-			c.text = t2.to_upper()
-			c.caret_column = col)
+			c.text = Progreso.limpiar_nombre(t2)
+			c.caret_column = mini(col, c.text.length()))
 	_form.add_child(c)
 	return c
 
@@ -265,16 +273,27 @@ func _colocar() -> void:
 	_b_cuenta2.size = Vector2(cu.size.x - 20, 22)
 	_b_cuenta2.position = Vector2(cu.position.x + 10, cu.end.y - 32)
 	var fr := _rect_form()
-	_campo_nombre.position = Vector2(fr.position.x + 20, fr.position.y + 66)
-	_campo_nombre.size = Vector2(fr.size.x - 40, 26)
-	_campo_clave.position = Vector2(fr.position.x + 20, fr.position.y + 112)
-	_campo_clave.size = Vector2(fr.size.x - 40, 26)
+	for c in [_campo_correo, _campo_nombre, _campo_clave]:
+		c.visible = false
+	var campos := _campos_form()
+	for k in campos.size():
+		var c: LineEdit = campos[k]
+		c.visible = true
+		c.position = Vector2(fr.position.x + 20, fr.position.y + 66 + k * 44)
+		c.size = Vector2(fr.size.x - 40, 24)
 	_form_ok.size = Vector2(fr.size.x - 40, 26)
 	_form_ok.position = Vector2(fr.position.x + 20, fr.end.y - 64)
+	var dos := _form_modo != "nueva_clave"
+	_form_cambiar.visible = dos
 	_form_cambiar.size = Vector2(fr.size.x * 0.5 - 24, 20)
 	_form_cambiar.position = Vector2(fr.position.x + 20, fr.end.y - 32)
-	_form_cancelar.size = Vector2(fr.size.x * 0.5 - 24, 20)
-	_form_cancelar.position = Vector2(fr.get_center().x + 4, fr.end.y - 32)
+	_form_cancelar.size = Vector2(fr.size.x * 0.5 - 24, 20) if dos else Vector2(fr.size.x - 40, 20)
+	_form_cancelar.position = Vector2(fr.get_center().x + 4, fr.end.y - 32) if dos else Vector2(fr.position.x + 20, fr.end.y - 32)
+	_form_olvide.visible = _form_modo == "entrar"
+	_form_olvide.size = Vector2(150, 16)
+	_form_olvide.position = Vector2(fr.end.x - 170, fr.position.y + 50 + campos.size() * 44)
+	for b in [_form_ok, _form_cambiar, _form_cancelar, _form_olvide]:
+		b.queue_redraw()
 	for b in [_b_ant, _b_sig, _b_mio]:
 		b.queue_redraw()
 	queue_redraw()
@@ -284,9 +303,25 @@ func _cantidad_filas() -> int:
 		return mini(POR_PAGINA, _filas_datos.size()) if Red.configurado() else 0
 	return mini(POR_PAGINA, Progreso.registros.size())
 
+func _campos_form() -> Array:
+	match _form_modo:
+		"registro": return [_campo_correo, _campo_nombre, _campo_clave]
+		"entrar": return [_campo_correo, _campo_clave]
+		"recuperar": return [_campo_correo]
+	return [_campo_clave]
+
+func _siguiente_campo(c: LineEdit) -> void:
+	var campos := _campos_form()
+	var k := campos.find(c)
+	if k >= 0 and k < campos.size() - 1:
+		campos[k + 1].grab_focus()
+	else:
+		_enviar_form()
+
 func _rect_form() -> Rect2:
 	var t := get_viewport_rect().size
-	var s := Vector2(300, 250)
+	var s := Vector2(320, 150 + _campos_form().size() * 44 + (30 if _form_modo == "entrar" else 0))
+	s.y = minf(s.y, t.y - 8)
 	return Rect2((t - s) * 0.5 - Vector2(0, 30 if Ajustes.es_tactil() else 0), s)   # deja sitio al teclado
 
 # ---------------------------------------------------------------- cuenta
@@ -318,16 +353,22 @@ func _accion_cuenta2() -> void:
 	else:
 		_abrir_form("entrar")
 
-func _abrir_form(modo: String) -> void:
+func _abrir_form(modo: String, aviso := "") -> void:
 	_form_modo = modo
 	_form_error = ""
+	_form_aviso = aviso
 	_form.visible = true
-	_form_ok.texto = "CREAR PILOTO" if modo == "registro" else "ENTRAR"
-	_form_cambiar.texto = "YA TENGO CUENTA" if modo == "registro" else "CREAR CUENTA"
+	_form_ok.texto = {"registro": "CREAR CUENTA", "entrar": "ENTRAR", "recuperar": "ENVIAR CORREO", "nueva_clave": "GUARDAR CONTRASEÑA"}[modo]
+	_form_cambiar.texto = {"registro": "YA TENGO CUENTA", "entrar": "CREAR CUENTA", "recuperar": "VOLVER"}.get(modo, "")
 	_campo_clave.text = ""
+	_campo_clave.placeholder_text = "NUEVA CONTRASEÑA" if modo == "nueva_clave" else "CONTRASEÑA"
 	if _campo_nombre.text == "":
 		_campo_nombre.text = Progreso.piloto
-	_campo_nombre.grab_focus.call_deferred()
+	_colocar()
+	var primero: LineEdit = _campos_form()[0]
+	if primero == _campo_correo and _campo_correo.text != "" and modo == "entrar":
+		primero = _campo_clave
+	primero.grab_focus.call_deferred()
 	_form.queue_redraw()
 
 func _enviar_form() -> void:
@@ -335,23 +376,34 @@ func _enviar_form() -> void:
 		return
 	_form_ocupado = true
 	_form_error = ""
+	_form_aviso = ""
 	_form.queue_redraw()
+	var modo := _form_modo
 	var r: Dictionary
-	if _form_modo == "registro":
-		r = await Red.registrar(_campo_nombre.text, _campo_clave.text)
-	else:
-		r = await Red.entrar(_campo_nombre.text, _campo_clave.text)
+	match modo:
+		"registro": r = await Red.registrar(_campo_correo.text, _campo_nombre.text, _campo_clave.text)
+		"entrar": r = await Red.entrar(_campo_correo.text, _campo_clave.text)
+		"recuperar": r = await Red.recuperar(_campo_correo.text)
+		_: r = await Red.cambiar_clave(_campo_clave.text)
 	_form_ocupado = false
-	if r.ok:
-		_form.visible = false
-		_campo_clave.text = ""
-		Audio.sfx("mejora")
-		Red.cargar_top()
-		_ir_a_mi_puesto()
-		_enfocar()
-	else:
+	if not r.ok:
 		_form_error = String(r.error)
 		Audio.sfx("ui_error")
+		_form.queue_redraw()
+		return
+	Audio.sfx("mejora")
+	if modo == "registro" and r.datos.confirmar:
+		_abrir_form("entrar", "¡CUENTA CREADA! TE ENVIAMOS UN CORREO A %s. ÁBRELO PARA ACTIVARLA (MIRA EN SPAM) Y LUEGO ENTRA AQUÍ." % _campo_correo.text.strip_edges().to_upper())
+		return
+	if modo == "recuperar":
+		_abrir_form("entrar", "SI ESE CORREO TIENE CUENTA, TE LLEGARÁ UN ENLACE PARA CAMBIAR LA CONTRASEÑA.")
+		return
+	_form.visible = false
+	_campo_clave.text = ""
+	DisplayServer.virtual_keyboard_hide()
+	Red.cargar_top()
+	_ir_a_mi_puesto()
+	_enfocar()
 	_form.queue_redraw()
 
 func _pulsar_fila(i: int) -> void:
@@ -417,7 +469,7 @@ func _draw() -> void:
 		Texto.dibujar(self, Vector2(x, y + 100), "TUS PARTIDAS CUENTAN AL TERMINAR", 5, Neon.GRIS, HORIZONTAL_ALIGNMENT_CENTER)
 	else:
 		Texto.dibujar(self, Vector2(x, y + 2), "ÚNETE AL RANKING", 9, Neon.AMARILLO, HORIZONTAL_ALIGNMENT_CENTER)
-		Texto.parrafo(self, Vector2(x, y + 24), "CREA TU PILOTO CON UN NOMBRE Y UNA CONTRASEÑA. TUS PARTIDAS COMPETIRÁN CON LAS DE TODOS LOS PILOTOS.", 6, Neon.BLANCO, cu.size.x - 24)
+		Texto.parrafo(self, Vector2(x, y + 24), "CREA TU CUENTA CON TU CORREO. TUS PARTIDAS COMPETIRÁN CON LAS DE TODOS LOS PILOTOS.", 6, Neon.BLANCO, cu.size.x - 24)
 
 ## [titulo, x, alinear_derecha]
 func _columnas(w: float) -> Array:
@@ -467,11 +519,18 @@ func _dibujar_form(c: Control) -> void:
 	var r := _rect_form()
 	Neon.marco(c, r, Neon.AMARILLO, 12.0, Color(0.03, 0.04, 0.13, 0.98))
 	var cx := r.get_center().x
-	Texto.dibujar(c, Vector2(cx, r.position.y + 26), "CREA TU PILOTO" if _form_modo == "registro" else "ENTRA CON TU PILOTO", 11, Neon.AMARILLO, HORIZONTAL_ALIGNMENT_CENTER)
-	Texto.dibujar(c, Vector2(cx, r.position.y + 40), "3-14 LETRAS, NÚMEROS O _" if _form_modo == "registro" else "TU NOMBRE Y TU CONTRASEÑA", 6, Neon.GRIS, HORIZONTAL_ALIGNMENT_CENTER)
-	Texto.dibujar(c, Vector2(r.position.x + 20, r.position.y + 61), "NOMBRE", 6, Neon.CIAN)
-	Texto.dibujar(c, Vector2(r.position.x + 20, r.position.y + 107), "CONTRASEÑA (MÍNIMO 6)", 6, Neon.CIAN)
+	var titulo: String = {"registro": "CREA TU PILOTO", "entrar": "ENTRA CON TU CUENTA", "recuperar": "RECUPERAR CONTRASEÑA", "nueva_clave": "NUEVA CONTRASEÑA"}[_form_modo]
+	var sub: String = {"registro": "CON TU CORREO PODRÁS ENTRAR DESDE CUALQUIER EQUIPO", "entrar": "TU CORREO Y TU CONTRASEÑA", "recuperar": "TE ENVIAREMOS UN ENLACE A TU CORREO", "nueva_clave": "ELIGE UNA CONTRASEÑA NUEVA"}[_form_modo]
+	Texto.dibujar(c, Vector2(cx, r.position.y + 26), titulo, 11, Neon.AMARILLO, HORIZONTAL_ALIGNMENT_CENTER)
+	Texto.dibujar(c, Vector2(cx, r.position.y + 40), sub, 5, Neon.GRIS, HORIZONTAL_ALIGNMENT_CENTER)
+	var etiquetas := {_campo_correo: "CORREO", _campo_nombre: "NOMBRE DE PILOTO (3-14 LETRAS, NÚMEROS O _)", _campo_clave: "CONTRASEÑA (MÍNIMO 6)"}
+	var campos := _campos_form()
+	for k in campos.size():
+		Texto.dibujar(c, Vector2(r.position.x + 20, r.position.y + 61 + k * 44), etiquetas[campos[k]], 6, Neon.CIAN)
+	var y_msj := r.end.y - 84
 	if _form_ocupado:
-		Neon.rueda(c, Vector2(cx, r.end.y - 84), Neon.AMARILLO, _t, 7.0)
+		Neon.rueda(c, Vector2(cx, y_msj), Neon.AMARILLO, _t, 7.0)
 	elif _form_error != "":
-		Texto.parrafo(c, Vector2(cx, r.end.y - 84), _form_error.to_upper(), 6, Neon.ROSA, r.size.x - 30)
+		Texto.parrafo(c, Vector2(cx, y_msj - 6), _form_error.to_upper(), 6, Neon.ROSA, r.size.x - 30)
+	elif _form_aviso != "":
+		Texto.parrafo(c, Vector2(cx, y_msj - 10), _form_aviso, 5, Color("7dff9b"), r.size.x - 30)

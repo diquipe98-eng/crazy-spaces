@@ -6,8 +6,10 @@ extends Node
 
 signal sesion_cambiada
 signal top_actualizado
+signal pide_clave_nueva        ## abrió el enlace de "olvidé mi contraseña"
 
-const DOMINIO := "@jugadores.crazyspaces.app"
+## Adonde vuelven los enlaces de los correos (confirmar cuenta / cambiar contraseña).
+const URL_JUEGO := "https://diquipe98-eng.github.io/crazy-spaces/"
 const RUTA_SESION := "user://sesion.cfg"
 
 var url := ""
@@ -23,6 +25,7 @@ var top: Array = []
 var top_hora := 0.0
 var ultimo_puesto := 0         ## puesto global tras la última partida enviada
 var pendientes: Array = []     ## partidas que no se pudieron enviar
+var recuperando := false       ## entró con el enlace de recuperar: falta poner clave nueva
 
 func _ready() -> void:
 	url = Datos.SUPABASE_URL.trim_suffix("/")
@@ -35,6 +38,8 @@ func _ready() -> void:
 	_cargar()
 	if conectado() and not pendientes.is_empty():
 		_enviar_pendientes.call_deferred()
+	if OS.has_feature("web"):
+		_leer_enlace_correo.call_deferred()
 
 func configurado() -> bool:
 	return url != "" and clave != ""
@@ -52,7 +57,15 @@ static func nombre_valido(n: String) -> String:
 	return ""
 
 # ---------------------------------------------------------------- cuentas
-func registrar(n: String, clave_jugador: String) -> Dictionary:
+static func correo_valido(c: String) -> bool:
+	return RegEx.create_from_string("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").search(c.strip_edges()) != null
+
+## Crea la cuenta. datos = {"confirmar": true} si el servidor pide confirmar el correo
+## (entonces no queda la sesión abierta hasta que el jugador abra el enlace).
+func registrar(correo: String, n: String, clave_jugador: String) -> Dictionary:
+	var mail := correo.strip_edges().to_lower()
+	if not correo_valido(mail):
+		return _fallo("Escribe un correo válido")
 	var nom := n.strip_edges().to_upper()
 	var falla := nombre_valido(nom)
 	if falla != "":
@@ -61,27 +74,78 @@ func registrar(n: String, clave_jugador: String) -> Dictionary:
 		return _fallo("La contraseña necesita al menos 6 caracteres")
 	var libre := await _rpc("nombre_disponible", {"p_nombre": nom})
 	if libre.ok and libre.datos == false:
-		return _fallo("Ese nombre ya está en uso")
-	var r := await _peticion(HTTPClient.METHOD_POST, "/auth/v1/signup",
-		{"email": nom.to_lower() + DOMINIO, "password": clave_jugador, "data": {"nombre": nom}})
+		return _fallo("Ese nombre de piloto ya está en uso")
+	var r := await _peticion(HTTPClient.METHOD_POST, "/auth/v1/signup?redirect_to=" + URL_JUEGO.uri_encode(),
+		{"email": mail, "password": clave_jugador, "data": {"nombre": nom}})
 	if not r.ok:
 		return r
 	if typeof(r.datos) != TYPE_DICTIONARY or not r.datos.has("access_token"):
-		return _fallo("Cuenta creada, pero el servidor pide confirmar el correo (desactívalo en Supabase)")
+		return {"ok": true, "datos": {"confirmar": true, "nombre": nom}}
 	_guardar_sesion(r.datos, nom)
-	return {"ok": true, "datos": nom}
+	return {"ok": true, "datos": {"confirmar": false, "nombre": nom}}
 
-func entrar(n: String, clave_jugador: String) -> Dictionary:
-	var nom := n.strip_edges().to_upper()
-	if nom == "" or clave_jugador == "":
-		return _fallo("Escribe tu nombre y tu contraseña")
+func entrar(correo: String, clave_jugador: String) -> Dictionary:
+	var mail := correo.strip_edges().to_lower()
+	if mail == "" or clave_jugador == "":
+		return _fallo("Escribe tu correo y tu contraseña")
+	if not correo_valido(mail):
+		return _fallo("Escribe un correo válido")
 	var r := await _peticion(HTTPClient.METHOD_POST, "/auth/v1/token?grant_type=password",
-		{"email": nom.to_lower() + DOMINIO, "password": clave_jugador})
+		{"email": mail, "password": clave_jugador})
 	if not r.ok:
 		return r
 	var meta: Dictionary = r.datos.get("user", {}).get("user_metadata", {})
-	_guardar_sesion(r.datos, String(meta.get("nombre", nom)))
+	_guardar_sesion(r.datos, String(meta.get("nombre", "")))
 	return {"ok": true, "datos": nombre}
+
+## Envía el correo para cambiar la contraseña.
+func recuperar(correo: String) -> Dictionary:
+	var mail := correo.strip_edges().to_lower()
+	if not correo_valido(mail):
+		return _fallo("Escribe un correo válido")
+	return await _peticion(HTTPClient.METHOD_POST, "/auth/v1/recover?redirect_to=" + URL_JUEGO.uri_encode(), {"email": mail})
+
+## Pone la contraseña nueva (tras abrir el enlace de recuperar).
+func cambiar_clave(nueva: String) -> Dictionary:
+	if nueva.length() < 6:
+		return _fallo("La contraseña necesita al menos 6 caracteres")
+	if not await _asegurar_token():
+		return _fallo("El enlace caducó: pide otro correo", 401)
+	var r := await _peticion(HTTPClient.METHOD_PUT, "/auth/v1/user", {"password": nueva}, true)
+	if r.ok:
+		recuperando = false
+	return r
+
+## Los enlaces de los correos vuelven al juego con la sesión en la dirección
+## (#access_token=...&type=signup|recovery). Se usa y se borra de la barra.
+func _leer_enlace_correo() -> void:
+	var frag := String(JavaScriptBridge.eval("window.location.hash", true))
+	if frag.length() < 2:
+		return
+	JavaScriptBridge.eval("history.replaceState(null, '', location.pathname + location.search)", true)
+	var p := {}
+	for par in frag.substr(1).split("&"):
+		var kv := par.split("=", true, 1)
+		if kv.size() == 2:
+			p[kv[0]] = kv[1].uri_decode()
+	await aplicar_enlace(p)
+
+## Separado para poder probarlo sin navegador.
+func aplicar_enlace(p: Dictionary) -> void:
+	if not p.has("access_token"):
+		return
+	token = String(p.access_token)
+	refresco = String(p.get("refresh_token", ""))
+	expira = Time.get_unix_time_from_system() + float(p.get("expires_in", 3600))
+	var u := await _peticion(HTTPClient.METHOD_GET, "/auth/v1/user", null, true)
+	if not u.ok or typeof(u.datos) != TYPE_DICTIONARY:
+		token = ""; refresco = ""
+		return
+	var d := {"access_token": token, "refresh_token": refresco, "expires_in": float(p.get("expires_in", 3600)), "user": u.datos}
+	_guardar_sesion(d, String(u.datos.get("user_metadata", {}).get("nombre", "")))
+	if String(p.get("type", "")) == "recovery":
+		recuperando = true
+		pide_clave_nueva.emit()
 
 func salir() -> void:
 	if conectado() and configurado():
@@ -210,12 +274,22 @@ func _mensaje(codigo: int, d) -> String:
 		m = String(d.get("msg", d.get("message", d.get("error_description", ""))))
 	match c:
 		"invalid_credentials", "invalid_grant":
-			return "Nombre o contraseña incorrectos"
+			return "Correo o contraseña incorrectos"
 		"user_already_exists", "email_exists":
-			return "Ese nombre ya está en uso"
+			return "Ya hay una cuenta con ese correo: usa YA TENGO CUENTA"
 		"weak_password":
 			return "La contraseña es muy débil (mínimo 6 caracteres)"
-		"over_request_rate_limit", "over_email_send_rate_limit":
+		"email_not_confirmed":
+			return "Primero confirma tu correo: abre el enlace que te enviamos (mira también en spam)"
+		"email_address_invalid", "validation_failed":
+			return "Ese correo no es válido"
+		"over_email_send_rate_limit":
+			return "Se enviaron demasiados correos: espera un rato y vuelve a intentarlo"
+		"same_password":
+			return "La contraseña nueva debe ser distinta a la anterior"
+		"signup_disabled":
+			return "El registro está cerrado por ahora"
+		"over_request_rate_limit":
 			return "Demasiados intentos: espera un momento"
 	if codigo == 429:
 		return "Demasiados intentos: espera un momento"
@@ -224,7 +298,7 @@ func _mensaje(codigo: int, d) -> String:
 	if "demasiado rapido" in m:
 		return "Espera unos segundos entre partidas"
 	if "Database error saving new user" in m:
-		return "Ese nombre ya está en uso"
+		return "Ese nombre de piloto ya está en uso"
 	return "Error del servidor (%d)" % codigo
 
 # ---------------------------------------------------------------- disco

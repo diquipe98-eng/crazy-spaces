@@ -34,8 +34,6 @@ func _ready() -> void:
 	var rec := _boton(f, "MARCADORES", Color("ffd23a"), 104, 28)
 	rec.pulsado.connect(func(): _ir("records"))
 	_boton(f, "AJUSTES", Color("c58cff"), 92, 28).pulsado.connect(func(): _ir("ajustes"))
-	var ayuda := _boton(v, "CÓMO JUGAR", Color("19e6ff"), 190, 24, 8)
-	ayuda.pulsado.connect(func(): _guia.abrir_guia())
 	if Datos.URL_DONACIONES != "":
 		var apoyar := _boton(v, "APOYAR", Color("ff7aa8"), 120, 24, 8)
 		apoyar.icono = Datos.tex("res://art/hud/heart.png")
@@ -58,6 +56,7 @@ func _ready() -> void:
 	c.add_child(PanelAjustes.new())
 	av.add_child(c)
 	var af := _fila(av)
+	_boton(af, "CÓMO JUGAR", Color("19e6ff"), 130, 26, 8).pulsado.connect(func(): _guia.abrir_guia())
 	_boton(af, "CAMBIAR NOMBRE", Color("ffe36b"), 150, 26, 8).pulsado.connect(func(): _bienvenida.abrir(false))
 	_boton(af, "VOLVER", Color("ff7892"), 120, 26).pulsado.connect(func(): _ir("inicio"))
 	_top = PanelTop10.new()
@@ -78,7 +77,7 @@ func _ready() -> void:
 	_posiciones.volver.connect(func(): _ir("inicio"))
 	_guia = Tutorial.new()
 	add_child(_guia)
-	_guia.cerrado.connect(func(): _ir("inicio"))
+	_guia.cerrado.connect(func(): _ir(_vista))
 	_guia.repetir.connect(_jugar)
 	_bienvenida = Bienvenida.new()
 	add_child(_bienvenida)
@@ -86,8 +85,18 @@ func _ready() -> void:
 	_ir("inicio")
 	if "--jugar" in OS.get_cmdline_user_args():
 		_jugar.call_deferred()
-	elif Progreso.piloto == "":
+	elif Progreso.piloto == "" and not Red.conectado():
 		_bienvenida.abrir(true)
+	# enlace de "olvidé mi contraseña": pedir la nueva en MARCADORES
+	Red.pide_clave_nueva.connect(func():
+		_bienvenida.visible = false
+		_ir("records")
+		_posiciones._abrir_form("nueva_clave"))
+	# si entra con su cuenta (p. ej. desde el enlace del correo) sobra la bienvenida
+	Red.sesion_cambiada.connect(func():
+		if Red.conectado() and _bienvenida.abierta():
+			_bienvenida.visible = false
+			_ir(_vista))
 
 func _vista_nueva() -> Control:
 	var c := Control.new()
