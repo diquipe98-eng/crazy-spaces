@@ -19,6 +19,7 @@ func _arg(k: String) -> String:
 func _ready() -> void:
 	Progreso.guardado_activo = false
 	Progreso.saltar_tutorial()
+	Progreso.registros = []     # no subir los récords reales de este equipo
 	Red.salir()
 	var correo := _arg("correo")
 	var nom := _arg("nombre")

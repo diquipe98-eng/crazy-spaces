@@ -31,6 +31,7 @@ func _falso_confirmar(correo: String) -> Dictionary:
 func _ready() -> void:
 	Progreso.guardado_activo = false
 	Progreso.saltar_tutorial()
+	Progreso.registros = []     # no subir los récords reales de este equipo
 	Red.salir()
 	Red.top = []
 	print("TABLA GLOBAL (", Red.url, ")")
@@ -159,5 +160,17 @@ func _ready() -> void:
 	Red.salir()
 	r = await Red.entrar("nuevo@test.com", "nueva_secreta")
 	_ok(r.ok, "entrar con la contraseña nueva")
+	# récord jugado sin cuenta: al registrarse se sube a la tabla global
+	Red.salir()
+	Progreso.registros = [{"puntaje": 3000, "tiempo": 200.0, "nivel": 8, "jefes": 2, "nave": "spectra"},
+		{"puntaje": 900, "tiempo": 90.0, "nivel": 3, "jefes": 0}]
+	r = await Red.registrar("local@test.com", "LOCAL_REC", "secreta9")
+	r = await Red.perfil(Red.uid)
+	_ok(r.ok and int(r.datos.partidas) == 1 and int(r.datos.mejor_puntaje) == 3000 and r.datos.nave_favorita == "spectra", "al registrarse sube su mejor récord offline")
+	_ok(Progreso.record_sin_subir().is_empty(), "el récord queda marcado como subido")
+	Red.salir()
+	r = await Red.entrar("local@test.com", "secreta9")
+	r = await Red.perfil(Red.uid)
+	_ok(r.ok and int(r.datos.partidas) == 1, "no lo vuelve a subir al entrar otra vez")
 	print("RESULTADO: ", "OK" if fallos == 0 else "%d FALLOS" % fallos)
 	get_tree().quit(0 if fallos == 0 else 1)

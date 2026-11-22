@@ -1387,7 +1387,7 @@ func _fin_partida() -> void:
 	if estado == "fin":
 		return
 	_terminar_tutorial()
-	var record := Progreso.registrar(puntaje, tiempo, nivel, jefes_derrotados)
+	var record := Progreso.registrar(puntaje, tiempo, nivel, jefes_derrotados, N.id)
 	cambiar_estado("fin")
 	pantallas.preparar_fin(record)
 	_enviar_a_la_tabla()

@@ -38,6 +38,8 @@ func _ready() -> void:
 	_cargar()
 	if conectado() and not pendientes.is_empty():
 		_enviar_pendientes.call_deferred()
+	if conectado():
+		sincronizar_locales.call_deferred()
 	if OS.has_feature("web"):
 		_leer_enlace_correo.call_deferred()
 
@@ -82,6 +84,7 @@ func registrar(correo: String, n: String, clave_jugador: String) -> Dictionary:
 	if typeof(r.datos) != TYPE_DICTIONARY or not r.datos.has("access_token"):
 		return {"ok": true, "datos": {"confirmar": true, "nombre": nom}}
 	_guardar_sesion(r.datos, nom)
+	await sincronizar_locales()
 	return {"ok": true, "datos": {"confirmar": false, "nombre": nom}}
 
 func entrar(correo: String, clave_jugador: String) -> Dictionary:
@@ -96,6 +99,7 @@ func entrar(correo: String, clave_jugador: String) -> Dictionary:
 		return r
 	var meta: Dictionary = r.datos.get("user", {}).get("user_metadata", {})
 	_guardar_sesion(r.datos, String(meta.get("nombre", "")))
+	await sincronizar_locales()
 	return {"ok": true, "datos": nombre}
 
 ## Envía el correo para cambiar la contraseña.
@@ -143,6 +147,7 @@ func aplicar_enlace(p: Dictionary) -> void:
 		return
 	var d := {"access_token": token, "refresh_token": refresco, "expires_in": float(p.get("expires_in", 3600)), "user": u.datos}
 	_guardar_sesion(d, String(u.datos.get("user_metadata", {}).get("nombre", "")))
+	sincronizar_locales()
 	if String(p.get("type", "")) == "recovery":
 		recuperando = true
 		pide_clave_nueva.emit()
@@ -218,6 +223,19 @@ func enviar_partida(puntaje: int, tiempo: float, nivel: int, jefes: int, nave: S
 	elif r.get("codigo", 0) == 0:
 		pendientes.append(p)
 		_guardar()
+	return r
+
+## Sube el mejor récord jugado sin sesión en este dispositivo (solo el mejor: la tabla
+## cuenta la mejor partida de cada piloto y el servidor no acepta envíos seguidos).
+func sincronizar_locales() -> Dictionary:
+	var rec := Progreso.record_sin_subir()
+	if rec.is_empty() or not conectado():
+		return _fallo("nada que subir")
+	var r := await enviar_partida(int(rec.puntaje), float(rec.tiempo), int(rec.nivel), int(rec.jefes),
+		String(rec.get("nave", Progreso.nave_equipada)))
+	# sin conexión queda en "pendientes"; si el servidor la rechaza por inválida no se reintenta
+	if r.ok or r.get("codigo", 0) == 0 or "verificación" in String(r.get("error", "")):
+		Progreso.marcar_subidos()
 	return r
 
 func _enviar_pendientes() -> void:

@@ -6,7 +6,8 @@ const RUTA := "user://progreso.cfg"
 var mejor_puntaje := 0
 var mejor_tiempo := 0.0
 var nave_equipada := "drift"
-var registros: Array = []   ## [{puntaje, tiempo, nivel, jefes}] ordenados, máximo 5
+var registros: Array = []   ## [{puntaje, tiempo, nivel, jefes, nave, subido}] ordenados, máximo 5
+                            ## subido = ya está en la tabla global (o se jugó con sesión)
 var tutorial: Dictionary = {}   ## ventanas de tutorial ya vistas (id -> true)
 var piloto := ""                ## nombre elegido en la bienvenida ("" = primera vez)
 
@@ -92,15 +93,29 @@ func nave_desbloqueada(id: String) -> bool:
 	return mejor_puntaje >= int(Datos.nave(id).puntaje)
 
 ## Registra una partida. Devuelve true si es nuevo récord de puntaje.
-func registrar(puntaje: int, tiempo: float, nivel: int, jefes: int) -> bool:
+func registrar(puntaje: int, tiempo: float, nivel: int, jefes: int, nave := "") -> bool:
 	var nuevo := puntaje > mejor_puntaje
 	mejor_puntaje = max(mejor_puntaje, puntaje)
 	mejor_tiempo = max(mejor_tiempo, tiempo)
-	registros.append({"puntaje": puntaje, "tiempo": tiempo, "nivel": nivel, "jefes": jefes})
+	registros.append({"puntaje": puntaje, "tiempo": tiempo, "nivel": nivel, "jefes": jefes,
+		"nave": nave if nave != "" else nave_equipada, "subido": Red.conectado()})
 	registros.sort_custom(func(a, b): return a.puntaje > b.puntaje)
 	registros = registros.slice(0, 5)
 	guardar()
 	return nuevo
+
+## Mejor partida local que aún no está en la tabla global ({} si no hay).
+func record_sin_subir() -> Dictionary:
+	var mejor := {}
+	for r in registros:
+		if not r.get("subido", false) and int(r.puntaje) > int(mejor.get("puntaje", -1)):
+			mejor = r
+	return mejor
+
+func marcar_subidos() -> void:
+	for r in registros:
+		r["subido"] = true
+	guardar()
 
 static func formato_tiempo(t: float) -> String:
 	var s := int(t)

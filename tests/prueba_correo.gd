@@ -13,6 +13,7 @@ func _ok(c: bool, que: String) -> void:
 func _ready() -> void:
 	Progreso.guardado_activo = false
 	Progreso.saltar_tutorial()
+	Progreso.registros = []     # no subir los récords reales de este equipo
 	Red.salir()
 	var r := await Red.registrar("ana@test.com", "ANA_STAR", "secreta1")
 	_ok(r.ok and r.datos.confirmar and not Red.conectado(), "registro pide confirmar el correo")
