@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://diquipe98-eng.github.io/crazy-spaces/"><b>▶ JUGAR EN EL NAVEGADOR</b></a>
-  <!-- ITCH: &nbsp;·&nbsp; <a href="https://USUARIO.itch.io/crazy-spaces"><b>itch.io</b></a> -->
+  &nbsp;·&nbsp; <a href="https://diquiller.itch.io/crazy-spaces"><b>itch.io</b></a>
   &nbsp;·&nbsp; <a href="https://paypal.me/QUILLERBY"><b>♥ APOYAR EL JUEGO (PayPal)</b></a>
 </p>
 
